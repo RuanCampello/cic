@@ -16,4 +16,14 @@ To run the testing cases, as it is in any rust project, you might run:
 cargo test
 ```
 
+To actually compile some file to an executable, you may run:
 
+```sh
+cargo run -- build [file path]
+```
+
+Then, to execute, you can just access it in the current directory:
+
+```sh
+./[file path]
+```
