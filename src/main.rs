@@ -55,7 +55,7 @@ fn build(path: PathBuf) {
     assert!(as_status.success(), "assembler failed: {as_status}");
 
     let ld_status = Command::new("ld")
-        .arg("--o")
+        .arg("-o")
         .arg(&exe)
         .arg(&obj)
         .status()
