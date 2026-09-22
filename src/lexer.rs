@@ -33,7 +33,7 @@ pub struct Span {
     end: u32,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LexErrorKind<'src> {
     UnexpectedChar(char),
     InvalidInteger(&'src str),
