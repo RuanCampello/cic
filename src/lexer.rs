@@ -9,7 +9,7 @@ pub type LexError<'src> = Spanned<LexErrorKind<'src>>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind<'src> {
-    Integer(u64),
+    Integer(i64),
     Punct(Punct),
     Eof,
     /// we will probably have some variant to hold an str, I'm used to that
@@ -88,7 +88,7 @@ impl<'src> Lexer<'src> {
 
         let slice = span.slice(self.src);
 
-        match slice.parse::<u64>() {
+        match slice.parse::<i64>() {
             Ok(value) => Ok(Spanned::new(TokenKind::Integer(value), span)),
             _ => Err(Spanned::new(LexErrorKind::InvalidInteger(slice), span)),
         }
@@ -179,8 +179,8 @@ impl From<Punct> for TokenKind<'_> {
     }
 }
 
-impl From<u64> for TokenKind<'_> {
-    fn from(value: u64) -> Self {
+impl From<i64> for TokenKind<'_> {
+    fn from(value: i64) -> Self {
         Self::Integer(value)
     }
 }
@@ -242,5 +242,12 @@ mod tests {
         ];
 
         assert_eq!(output, expected);
+    }
+
+    #[test]
+    fn integer_past_i64_max_non_accepted() {
+        let tokens = lex("(1 + 9223372036854775808)").unwrap_err();
+        assert!(matches!(tokens.kind, LexErrorKind::InvalidInteger("9223372036854775808")));
+        assert_eq!(tokens.span, Span::new(5, 24))
     }
 }
