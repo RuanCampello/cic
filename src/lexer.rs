@@ -130,3 +130,17 @@ impl<K> Spanned<K> {
         Spanned { kind: f(self.kind), span: self.span }
     }
 }
+
+impl std::fmt::Display for LexError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let position = self.span.start;
+        write!(f, "lexical error at {position}: ")?;
+
+        match self.kind {
+            LexErrorKind::UnexpectedChar(c) => write!(f, "unexpected character '{c}'"),
+            LexErrorKind::InvalidInteger(int) => {
+                write!(f, "integer '{int}' doesn't fit in 64 bits")
+            },
+        }
+    }
+}
