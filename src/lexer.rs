@@ -149,7 +149,7 @@ impl std::fmt::Display for Token<'_> {
         let position = self.span.start;
 
         match self.kind {
-            TokenKind::Integer(int) => write!(f, "<Integer>, '{int}', {position}"),
+            TokenKind::Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
             TokenKind::Punct(punct) => {
                 write!(f, "<{punct:?}, '{}', {position}>", char::from(punct))
             },
@@ -222,5 +222,25 @@ mod tests {
             assert_eq!(token.kind, kind);
             assert_eq!(token.span, Span::new(start, end));
         }
+    }
+
+    #[test]
+    fn display_follows_specification_format() {
+        let output: Vec<_> =
+            lex("(33 + (912 * 11))").unwrap().iter().map(ToString::to_string).collect();
+
+        let expected = [
+            r#"<OpenParen, '(', 0>"#,
+            r#"<Integer, '33', 1>"#,
+            r#"<Plus, '+', 4>"#,
+            r#"<OpenParen, '(', 6>"#,
+            r#"<Integer, '912', 7>"#,
+            r#"<Star, '*', 11>"#,
+            r#"<Integer, '11', 13>"#,
+            r#"<CloseParen, ')', 15>"#,
+            r#"<CloseParen, ')', 16>"#,
+        ];
+
+        assert_eq!(output, expected);
     }
 }
