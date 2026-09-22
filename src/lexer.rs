@@ -64,7 +64,7 @@ impl<'src> Lexer<'src> {
         };
 
         let punct = match c {
-            '0'..'9' => return self.number(start),
+            '0'..='9' => return self.number(start),
             '+' => Punct::Plus,
             '-' => Punct::Minus,
             '*' => Punct::Star,
