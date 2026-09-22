@@ -20,7 +20,7 @@ pub enum TokenKind<'src> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Spanned<K> {
+pub struct Spanned<K> {
     kind: K,
     span: Span,
 }
@@ -28,7 +28,7 @@ struct Spanned<K> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 /// A byte range `[start, end)` in the source used to
 /// indicate errors on the respective file
-struct Span {
+pub struct Span {
     start: u32,
     end: u32,
 }
@@ -55,7 +55,7 @@ impl<'src> Lexer<'src> {
         Self { src, position: 0 }
     }
 
-    pub fn next_token(&mut self) -> Result<Token<'_>, LexError<'_>> {
+    pub fn next_token(&mut self) -> Result<Token<'src>, LexError<'src>> {
         self.skip_whitespaces();
         let start = self.position;
 
@@ -81,7 +81,7 @@ impl<'src> Lexer<'src> {
         Ok(Spanned::new(TokenKind::Punct(punct), Span::new(start, self.position)))
     }
 
-    fn number(&mut self, start: usize) -> Result<Token<'_>, LexError<'_>> {
+    fn number(&mut self, start: usize) -> Result<Token<'src>, LexError<'src>> {
         let len = self.src[start..].bytes().take_while(u8::is_ascii_digit).count();
         self.position = start + len;
         let span = Span::new(start, self.position);
@@ -141,6 +141,58 @@ impl std::fmt::Display for LexError<'_> {
             LexErrorKind::InvalidInteger(int) => {
                 write!(f, "integer '{int}' doesn't fit in 64 bits")
             },
+        }
+    }
+}
+
+impl From<Punct> for TokenKind<'_> {
+    fn from(value: Punct) -> Self {
+        Self::Punct(value)
+    }
+}
+
+impl From<u64> for TokenKind<'_> {
+    fn from(value: u64) -> Self {
+        Self::Integer(value)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn lex(src: &str) -> Result<Vec<Token<'_>>, LexError<'_>> {
+        let mut lexer = Lexer::new(src);
+        let mut tokens = Vec::new();
+
+        loop {
+            let token = lexer.next_token()?;
+            match token.kind {
+                TokenKind::Eof => return Ok(tokens),
+                _ => tokens.push(token),
+            }
+        }
+    }
+
+    #[test]
+    fn specficiation_example() {
+        let tokens = lex("(33 + (912 * 11))").unwrap();
+        let expected = [
+            (Punct::OpenParen.into(), 0, 1),
+            (33.into(), 1, 3),
+            (Punct::Plus.into(), 4, 5),
+            (Punct::OpenParen.into(), 6, 7),
+            (912.into(), 7, 10),
+            (Punct::Star.into(), 11, 12),
+            (11.into(), 13, 15),
+            (Punct::CloseParen.into(), 15, 16),
+            (Punct::CloseParen.into(), 16, 17),
+        ];
+
+        assert_eq!(tokens.len(), expected.len());
+        for (token, (kind, start, end)) in tokens.iter().zip(expected) {
+            assert_eq!(token.kind, kind);
+            assert_eq!(token.span, Span::new(start, end));
         }
     }
 }
