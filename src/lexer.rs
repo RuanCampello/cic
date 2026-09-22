@@ -131,6 +131,34 @@ impl<K> Spanned<K> {
     }
 }
 
+impl From<Punct> for char {
+    fn from(punct: Punct) -> Self {
+        match punct {
+            Punct::Plus => '+',
+            Punct::Minus => '-',
+            Punct::Star => '*',
+            Punct::Slash => '/',
+            Punct::OpenParen => '(',
+            Punct::CloseParen => ')',
+        }
+    }
+}
+
+impl std::fmt::Display for Token<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let position = self.span.start;
+
+        match self.kind {
+            TokenKind::Integer(int) => write!(f, "<Integer>, '{int}', {position}"),
+            TokenKind::Punct(punct) => {
+                write!(f, "<{punct:?}, '{}', {position}>", char::from(punct))
+            },
+            TokenKind::Eof => write!(f, "<Eof, {position}>"),
+            TokenKind::_M(_) => unreachable!(),
+        }
+    }
+}
+
 impl std::fmt::Display for LexError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let position = self.span.start;
