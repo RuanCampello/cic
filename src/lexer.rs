@@ -1,8 +1,14 @@
+pub struct Lexer<'src> {
+    src: &'src str,
+    position: usize,
+}
+
 /// A single token produced by the lexer
-type Token<'src> = Spanned<TokenKind<'src>>;
+pub type Token<'src> = Spanned<TokenKind<'src>>;
+pub type LexError<'src> = Spanned<LexErrorKind<'src>>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum TokenKind<'src> {
+pub enum TokenKind<'src> {
     Integer(u64),
     Punct(Punct),
     Eof,
@@ -27,8 +33,14 @@ struct Span {
     end: u32,
 }
 
+#[derive(Debug)]
+pub enum LexErrorKind<'src> {
+    UnexpectedChar(char),
+    InvalidInteger(&'src str),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum Punct {
+pub enum Punct {
     Plus,  // +
     Minus, // -
     Star,  // *
@@ -38,10 +50,67 @@ enum Punct {
     CloseParen, // )
 }
 
+impl<'src> Lexer<'src> {
+    pub fn new(src: &'src str) -> Self {
+        Self { src, position: 0 }
+    }
+
+    pub fn next_token(&mut self) -> Result<Token<'_>, LexError<'_>> {
+        self.skip_whitespaces();
+        let start = self.position;
+
+        let Some(c) = self.src[start..].chars().next() else {
+            return Ok(Spanned::new(TokenKind::Eof, Span::new(start, start)));
+        };
+
+        let punct = match c {
+            '0'..'9' => return self.number(start),
+            '+' => Punct::Plus,
+            '-' => Punct::Minus,
+            '*' => Punct::Star,
+            '/' => Punct::Slash,
+            '(' => Punct::OpenParen,
+            ')' => Punct::CloseParen,
+            _ => {
+                let span = Span::new(start, start + c.len_utf8());
+                return Err(Spanned::new(LexErrorKind::UnexpectedChar(c), span));
+            },
+        };
+
+        self.position += 1;
+        Ok(Spanned::new(TokenKind::Punct(punct), Span::new(start, self.position)))
+    }
+
+    fn number(&mut self, start: usize) -> Result<Token<'_>, LexError<'_>> {
+        let len = self.src[start..].bytes().take_while(u8::is_ascii_digit).count();
+        self.position = start + len;
+        let span = Span::new(start, self.position);
+
+        let slice = span.slice(self.src);
+
+        match slice.parse::<u64>() {
+            Ok(value) => Ok(Spanned::new(TokenKind::Integer(value), span)),
+            _ => Err(Spanned::new(LexErrorKind::InvalidInteger(slice), span)),
+        }
+    }
+
+    fn skip_whitespaces(&mut self) {
+        let len = self.src[self.position..].bytes().take_while(u8::is_ascii_whitespace).count();
+        self.position += len;
+    }
+}
+
 impl Span {
-    pub fn new(start: u32, end: u32) -> Self {
+    pub fn new(start: usize, end: usize) -> Self {
         assert!(start <= end, "well, shit happens: {start} past its {end}");
+        let start = u32::try_from(start).expect("source file to not be greater than u32::MAX");
+        let end = u32::try_from(end).expect("source file to not be greater than u32::MAX");
+
         Self { start, end }
+    }
+
+    pub fn slice(self, src: &str) -> &str {
+        &src[self.start as usize..self.end as usize]
     }
 
     pub fn merge(self, other: Span) -> Span {
