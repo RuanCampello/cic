@@ -242,6 +242,7 @@ mod tests {
         ];
 
         assert_eq!(output, expected);
+        println!("{output:#?}");
     }
 
     #[test]
@@ -249,5 +250,12 @@ mod tests {
         let tokens = lex("(1 + 9223372036854775808)").unwrap_err();
         assert!(matches!(tokens.kind, LexErrorKind::InvalidInteger("9223372036854775808")));
         assert_eq!(tokens.span, Span::new(5, 24))
+    }
+
+    #[test]
+    fn unexpected_char_is_rejected() {
+        let tokens = lex("(1 + a)").unwrap_err();
+        assert!(matches!(tokens.kind, LexErrorKind::UnexpectedChar('a')));
+        assert_eq!(tokens.span, Span::new(5, 6))
     }
 }
