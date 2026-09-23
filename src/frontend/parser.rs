@@ -32,11 +32,15 @@ pub enum BinaryOperator {
     Div,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum ParseErrorKind<'src> {
+    #[error(transparent)]
     Lex(LexErrorKind<'src>),
+    #[error("expected {expected} but found {found}")]
     Expected { found: TokenKind<'src>, expected: TokenKind<'src> },
+    #[error("expected a number or '(' but found {found}")]
     ExpectedExpression { found: TokenKind<'src> },
+    #[error("expected an operator but found {found}")]
     ExpectedOperator { found: TokenKind<'src> },
 }
 
@@ -163,23 +167,6 @@ impl From<BinaryOperator> for char {
 impl std::fmt::Display for ParseError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "parsing error at {}: {}", self.span, self.kind)
-    }
-}
-
-impl std::fmt::Display for ParseErrorKind<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Lex(lex) => write!(f, "{lex}"),
-            Self::Expected { found, expected } => {
-                write!(f, "expected {expected} but found {found}")
-            },
-            Self::ExpectedExpression { found } => {
-                write!(f, "expected a number or '(', but found {found}")
-            },
-            Self::ExpectedOperator { found } => {
-                write!(f, "expected an operator, but found {found}")
-            },
-        }
     }
 }
 

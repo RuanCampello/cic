@@ -1,11 +1,15 @@
+use thiserror::Error;
+
 use crate::frontend::{
     lexer::Spanned,
     parser::{BinaryOperator, Expression, ExpressionKind},
 };
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum EvalErrorKind {
+    #[error("arithmetic overflow")]
     Overflow,
+    #[error("division by zero")]
     DivisionByZero,
 }
 
@@ -30,6 +34,12 @@ pub fn evaluate(expr: &Expression<'_>) -> Result<i64, EvalError> {
             result.ok_or(Spanned::new(EvalErrorKind::Overflow, expr.span))
         },
         _ => unreachable!(),
+    }
+}
+
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "evaluation error at {}: {}", self.span, self.kind)
     }
 }
 

@@ -33,9 +33,11 @@ pub struct Span {
     end: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub enum LexErrorKind<'src> {
+    #[error("unexpected character '{0}'")]
     UnexpectedChar(char),
+    #[error("integer '{0}' doesn't fit in 64 bits")]
     InvalidInteger(&'src str),
 }
 
@@ -48,6 +50,19 @@ pub enum Punct {
 
     OpenParen,  // (
     CloseParen, // )
+}
+
+pub fn tokenise(src: &str) -> Result<Vec<Token<'_>>, LexError<'_>> {
+    let mut lexer = Lexer::new(src);
+    let mut tokens = Vec::new();
+
+    loop {
+        let token = lexer.next_token()?;
+        match token.kind {
+            TokenKind::Eof => return Ok(tokens),
+            _ => tokens.push(token),
+        }
+    }
 }
 
 impl<'src> Lexer<'src> {
@@ -170,19 +185,18 @@ impl std::fmt::Display for TokenKind<'_> {
     }
 }
 
-impl std::fmt::Display for LexErrorKind<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::UnexpectedChar(c) => write!(f, "unexpected character '{c}'"),
-            Self::InvalidInteger(int) => write!(f, "integer '{int}' doesn't fit in 64 bits"),
-        }
-    }
-}
-
 impl std::fmt::Display for LexError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let position = self.span.start;
         write!(f, "lexical error at {position}: {}", self.kind)
+    }
+}
+
+impl std::fmt::Display for Span {
+    // TODO: to use start..end in the future to show more instructive diagnostics
+    // like rust error msgs :D
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.start)
     }
 }
 
@@ -202,22 +216,9 @@ impl From<i64> for TokenKind<'_> {
 mod tests {
     use super::*;
 
-    fn lex(src: &str) -> Result<Vec<Token<'_>>, LexError<'_>> {
-        let mut lexer = Lexer::new(src);
-        let mut tokens = Vec::new();
-
-        loop {
-            let token = lexer.next_token()?;
-            match token.kind {
-                TokenKind::Eof => return Ok(tokens),
-                _ => tokens.push(token),
-            }
-        }
-    }
-
     #[test]
     fn specficiation_example() {
-        let tokens = lex("(33 + (912 * 11))").unwrap();
+        let tokens = tokenise("(33 + (912 * 11))").unwrap();
         let expected = [
             (Punct::OpenParen.into(), 0, 1),
             (33.into(), 1, 3),
@@ -240,7 +241,7 @@ mod tests {
     #[test]
     fn display_follows_specification_format() {
         let output: Vec<_> =
-            lex("(33 + (912 * 11))").unwrap().iter().map(ToString::to_string).collect();
+            tokenise("33 + (912 * 11))").unwrap().iter().map(ToString::to_string).collect();
 
         let expected = [
             r#"<OpenParen, '(', 0>"#,
@@ -260,14 +261,14 @@ mod tests {
 
     #[test]
     fn integer_past_i64_max_non_accepted() {
-        let tokens = lex("(1 + 9223372036854775808)").unwrap_err();
+        let tokens = tokenise("(1 + 9223372036854775808)").unwrap_err();
         assert!(matches!(tokens.kind, LexErrorKind::InvalidInteger("9223372036854775808")));
         assert_eq!(tokens.span, Span::new(5, 24))
     }
 
     #[test]
     fn unexpected_char_is_rejected() {
-        let tokens = lex("(1 + a)").unwrap_err();
+        let tokens = tokenise("(1 + a)").unwrap_err();
         assert!(matches!(tokens.kind, LexErrorKind::UnexpectedChar('a')));
         assert_eq!(tokens.span, Span::new(5, 6))
     }
