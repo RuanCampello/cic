@@ -18,14 +18,18 @@ To run the testing cases, as it is in any Rust project, you might run:
 cargo test
 ```
 
-To actually compile some file to an executable, you may run:
+To build the binary (of the compiler itself), run: 
 
 ```sh
-cargo run -- build [file path]
+cargo build --release
 ```
 
-Then, to execute, you can just run it from the current directory:
+To run the compiler, those are the commands you might wanna use:
 
 ```sh
-./[file path]
+cargo run -- lex   [file]   # token sequence
+cargo run -- parse [file]   # syntax tree
+cargo run -- eval  [file]   # value of the expression
 ```
+
+You can also use `target/release/cic`, of course, to run it manually after building :D
