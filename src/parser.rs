@@ -49,7 +49,7 @@ impl<'src> Parser<'src> {
         Ok(Self { lexer, lookahead })
     }
 
-    fn parse_node<T: Parsable<'src>>(&mut self) -> Result<T, ParseError<'src>> {
+    pub fn parse_node<T: Parsable<'src>>(&mut self) -> Result<T, ParseError<'src>> {
         T::parse(self)
     }
 
