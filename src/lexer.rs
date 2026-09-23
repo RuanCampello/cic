@@ -21,8 +21,8 @@ pub enum TokenKind<'src> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Spanned<K> {
-    kind: K,
-    span: Span,
+    pub kind: K,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
