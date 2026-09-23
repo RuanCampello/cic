@@ -4,7 +4,7 @@ use std::{fs, path::PathBuf};
 use cic::{
     self,
     frontend::{
-        lexer::LexError,
+        lexer::{self, LexError},
         parser::{self, ParseError},
     },
     interpreter::{self, EvalError},
@@ -21,10 +21,12 @@ struct Cli {
 enum Command {
     /// Compiles a ci file to a native x86-64 executable
     Build { path: PathBuf },
-    /// Parses and print the syntax tree for an ci file
+    /// Parses and print the syntax tree for a ci file
     Parse { path: PathBuf },
     /// Evaluate and print a ci program
     Eval { path: PathBuf },
+    /// Lexes and prints the token sequence of a ci file
+    Lex { path: PathBuf },
 }
 
 #[derive(Debug)]
@@ -37,7 +39,10 @@ enum Error<'err> {
 impl Command {
     const fn path(&self) -> &PathBuf {
         match self {
-            Self::Build { path } | Self::Parse { path } | Self::Eval { path } => path,
+            Self::Build { path }
+            | Self::Parse { path }
+            | Self::Eval { path }
+            | Self::Lex { path } => path,
         }
     }
 
@@ -46,6 +51,9 @@ impl Command {
             Self::Build { .. } => unreachable!("build was not implemented for this delivery"),
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
             Self::Eval { .. } => Ok(format!("{}", interpreter::evaluate(&parser::parse(src)?)?)),
+            Self::Lex { .. } => {
+                Ok(lexer::tokenise(src)?.iter().map(|token| format!("{token}\n")).collect())
+            },
         }
     }
 }
