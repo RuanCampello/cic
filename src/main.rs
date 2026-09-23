@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use cic::{
     self,
@@ -27,6 +27,7 @@ enum Command {
     Eval { path: PathBuf },
 }
 
+#[derive(Debug)]
 enum Error<'err> {
     Lex(LexError<'err>),
     Parse(ParseError<'err>),
@@ -43,19 +44,38 @@ impl Command {
     fn run<'src>(&self, src: &'src str) -> Result<String, Error<'src>> {
         match self {
             Self::Build { .. } => unreachable!("build was not implemented for this delivery"),
-            Self::Parse { .. } => Ok(todo!()),
+            Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
             Self::Eval { .. } => Ok(format!("{}", interpreter::evaluate(&parser::parse(src)?)?)),
         }
     }
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let command = Cli::parse().command;
+    let path = command.path();
 
-    match cli.command {
-        Command::Build { path } => unreachable!("build was not done for this phase"),
-        Command::Parse { path } => todo!(),
-        Command::Eval { path } => todo!(),
+    let Ok(src) = fs::read_to_string(path) else {
+        eprintln!("couldn't read {}", path.display());
+        std::process::exit(1)
+    };
+
+    match command.run(&src) {
+        Ok(output) => {
+            println!("{output}");
+        },
+        Err(error) => {
+            eprintln!("{error}")
+        },
+    }
+}
+
+impl std::fmt::Display for Error<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lex(lex) => write!(f, "{lex}"),
+            Self::Parse(parse) => write!(f, "{parse}"),
+            Self::Eval(eval) => write!(f, "{eval}"),
+        }
     }
 }
 

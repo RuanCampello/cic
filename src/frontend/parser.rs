@@ -149,6 +149,23 @@ impl<'src> From<LexError<'src>> for ParseError<'src> {
     }
 }
 
+impl From<BinaryOperator> for char {
+    fn from(value: BinaryOperator) -> Self {
+        match value {
+            BinaryOperator::Add => '+',
+            BinaryOperator::Sub => '-',
+            BinaryOperator::Mul => '*',
+            BinaryOperator::Div => '/',
+        }
+    }
+}
+
+impl std::fmt::Display for ParseError<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "parsing error at {}: {}", self.span, self.kind)
+    }
+}
+
 impl std::fmt::Display for ParseErrorKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
