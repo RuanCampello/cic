@@ -33,7 +33,9 @@ pub enum BinaryOperator {
 #[derive(Debug, PartialEq)]
 pub enum ParseErrorKind<'src> {
     Lex(LexErrorKind<'src>),
-    UnexpectedToken { found: TokenKind<'src>, expected: TokenKind<'src> },
+    Expected { found: TokenKind<'src>, expected: TokenKind<'src> },
+    ExpectedExpression { found: TokenKind<'src> },
+    ExpectedOperator { found: TokenKind<'src> },
 }
 
 pub trait Parsable<'src>: Sized {
@@ -68,21 +70,20 @@ impl<'src> Parser<'src> {
                 self.advance()?;
                 Ok(span)
             },
-            _ => Err(self.unexpected(punct.into())),
+            found => Err(self.error(ParseErrorKind::Expected { found, expected: punct.into() })),
         }
     }
 
     fn expect_eof(&mut self) -> Result<(), ParseError<'src>> {
         match self.lookahead.kind {
             TokenKind::Eof => Ok(()),
-            _ => Err(self.unexpected(TokenKind::Eof)),
+            found => Err(self.error(ParseErrorKind::Expected { found, expected: TokenKind::Eof })),
         }
     }
 
     #[inline(always)]
-    fn unexpected(&self, expected: TokenKind<'src>) -> ParseError<'src> {
-        let found = self.lookahead.kind;
-        Spanned::new(ParseErrorKind::UnexpectedToken { found, expected }, self.lookahead.span)
+    fn error(&self, kind: ParseErrorKind<'src>) -> ParseError<'src> {
+        Spanned::new(kind, self.lookahead.span)
     }
 }
 
@@ -112,7 +113,7 @@ impl<'src> Parsable<'src> for Expression<'src> {
 
                 Ok(Spanned::new(kind, token.span.merge(close)))
             },
-            _ => Err(parser.unexpected(todo!())),
+            found => Err(parser.error(ParseErrorKind::ExpectedExpression { found })),
         }
     }
 }
@@ -124,7 +125,7 @@ impl<'src> Parsable<'src> for BinaryOperator {
             TokenKind::Punct(Punct::Minus) => BinaryOperator::Sub,
             TokenKind::Punct(Punct::Star) => BinaryOperator::Mul,
             TokenKind::Punct(Punct::Slash) => BinaryOperator::Div,
-            _ => return Err(parser.unexpected(todo!())),
+            found => return Err(parser.error(ParseErrorKind::ExpectedOperator { found })),
         };
 
         parser.advance()?;
@@ -135,6 +136,23 @@ impl<'src> Parsable<'src> for BinaryOperator {
 impl<'src> From<LexError<'src>> for ParseError<'src> {
     fn from(error: LexError<'src>) -> Self {
         error.map(ParseErrorKind::Lex)
+    }
+}
+
+impl std::fmt::Display for ParseErrorKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lex(lex) => write!(f, "{lex}"),
+            Self::Expected { found, expected } => {
+                write!(f, "expected {expected} but found {found}")
+            },
+            Self::ExpectedExpression { found } => {
+                write!(f, "expected a number or '(', but found {found}")
+            },
+            Self::ExpectedOperator { found } => {
+                write!(f, "expected an operator, but found {found}")
+            },
+        }
     }
 }
 

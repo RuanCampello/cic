@@ -159,17 +159,30 @@ impl std::fmt::Display for Token<'_> {
     }
 }
 
+impl std::fmt::Display for TokenKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Integer(int) => write!(f, "integer: `{int}`"),
+            Self::Punct(punct) => write!(f, "`{}`", char::from(*punct)),
+            Self::Eof => f.write_str("end of input"),
+            _ => unreachable!(),
+        }
+    }
+}
+
+impl std::fmt::Display for LexErrorKind<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnexpectedChar(c) => write!(f, "unexpected character '{c}'"),
+            Self::InvalidInteger(int) => write!(f, "integer '{int}' doesn't fit in 64 bits"),
+        }
+    }
+}
+
 impl std::fmt::Display for LexError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let position = self.span.start;
-        write!(f, "lexical error at {position}: ")?;
-
-        match self.kind {
-            LexErrorKind::UnexpectedChar(c) => write!(f, "unexpected character '{c}'"),
-            LexErrorKind::InvalidInteger(int) => {
-                write!(f, "integer '{int}' doesn't fit in 64 bits")
-            },
-        }
+        write!(f, "lexical error at {position}: {}", self.kind)
     }
 }
 
