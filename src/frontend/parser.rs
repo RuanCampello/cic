@@ -1,4 +1,6 @@
-use crate::lexer::{LexError, LexErrorKind, Lexer, Punct, Span, Spanned, Token, TokenKind};
+use crate::frontend::lexer::{
+    LexError, LexErrorKind, Lexer, Punct, Span, Spanned, Token, TokenKind,
+};
 
 pub struct Parser<'src> {
     lexer: Lexer<'src>,
@@ -42,6 +44,14 @@ pub trait Parsable<'src>: Sized {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>>;
 }
 
+pub fn parse(src: &str) -> Result<Expression<'_>, ParseError<'_>> {
+    let mut parser = Parser::new(src)?;
+    let expr = parser.parse_node()?;
+    parser.expect_eof()?;
+
+    Ok(expr)
+}
+
 impl<'src> Parser<'src> {
     pub fn new(src: &'src str) -> Result<Self, ParseError<'src>> {
         let mut lexer = Lexer::new(src);
@@ -49,7 +59,7 @@ impl<'src> Parser<'src> {
         Ok(Self { lexer, lookahead })
     }
 
-    pub fn parse_node<T: Parsable<'src>>(&mut self) -> Result<T, ParseError<'src>> {
+    fn parse_node<T: Parsable<'src>>(&mut self) -> Result<T, ParseError<'src>> {
         T::parse(self)
     }
 

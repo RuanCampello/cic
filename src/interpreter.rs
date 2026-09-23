@@ -1,4 +1,4 @@
-use crate::{
+use crate::frontend::{
     lexer::Spanned,
     parser::{BinaryOperator, Expression, ExpressionKind},
 };
@@ -35,16 +35,12 @@ pub fn evaluate(expr: &Expression<'_>) -> Result<i64, EvalError> {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::Parser;
-
     use super::*;
+    use crate::frontend::parser::parse;
 
     #[test]
     fn evaluate_example() {
         let example = "((427 / 7) + (11 * (231 + 5)))";
-        let mut parser = Parser::new(example).unwrap();
-        let expr = parser.parse_node::<Expression>().unwrap();
-
-        assert_eq!(evaluate(&expr), Ok(2657));
+        assert_eq!(evaluate(&parse(example).unwrap()), Ok(2657));
     }
 }
