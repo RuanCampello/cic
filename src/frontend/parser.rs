@@ -174,14 +174,6 @@ impl std::fmt::Display for ParseError<'_> {
 mod tests {
     use super::*;
 
-    fn parse(src: &str) -> Result<Expression<'_>, ParseError<'_>> {
-        let mut parser = Parser::new(src)?;
-        let expr = parser.parse_node::<Expression<'_>>()?;
-        parser.expect_eof()?;
-
-        Ok(expr)
-    }
-
     #[test]
     fn specification_example_structure() {
         let expr = parse("(33 + (912 * 11))").unwrap();
@@ -200,5 +192,52 @@ mod tests {
         assert_eq!(*operator, BinaryOperator::Mul);
         assert_eq!(left.kind, ExpressionKind::Integer(912));
         assert_eq!(right.kind, ExpressionKind::Integer(11));
+    }
+
+    #[test]
+    fn unclosed_paren_is_rejected() {
+        let error = parse("(1 + 2").unwrap_err();
+        let expected =
+            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::CloseParen.into() };
+        assert_eq!(error.kind, expected);
+        assert_eq!(error.span, Span::new(6, 6));
+    }
+
+    #[test]
+    fn missing_operator_is_rejected() {
+        let error = parse("(1 2)").unwrap_err();
+        assert_eq!(error.kind, ParseErrorKind::ExpectedOperator { found: TokenKind::Integer(2) });
+        assert_eq!(error.span, Span::new(3, 4));
+    }
+
+    #[test]
+    fn trailing_tokens_are_rejected() {
+        let error = parse("1 2").unwrap_err();
+        let expected =
+            ParseErrorKind::Expected { found: TokenKind::Integer(2), expected: TokenKind::Eof };
+        assert_eq!(error.kind, expected);
+        assert_eq!(error.span, Span::new(2, 3));
+    }
+
+    #[test]
+    fn empty_parens_are_rejected() {
+        let error = parse("()").unwrap_err();
+        let expected = ParseErrorKind::ExpectedExpression { found: Punct::CloseParen.into() };
+        assert_eq!(error.kind, expected);
+        assert_eq!(error.span, Span::new(1, 2));
+    }
+
+    #[test]
+    fn empty_input_is_rejected() {
+        let error = parse("").unwrap_err();
+        assert_eq!(error.kind, ParseErrorKind::ExpectedExpression { found: TokenKind::Eof });
+        assert_eq!(error.span, Span::new(0, 0));
+    }
+
+    #[test]
+    fn lexical_error_surfaces_through_parser() {
+        let error = parse("(1 + a)").unwrap_err();
+        assert_eq!(error.kind, ParseErrorKind::Lex(LexErrorKind::UnexpectedChar('a')));
+        assert_eq!(error.span, Span::new(5, 6));
     }
 }
