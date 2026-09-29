@@ -4,8 +4,8 @@ use std::{fs, path::PathBuf};
 use cic::{
     self,
     frontend::{
-        lexer::{self, LexError},
-        parser::{self, ParseError},
+        lexer::{self, LexError, Spanned},
+        parser::{self, ParseError, ParseErrorKind},
     },
     interpreter::{self, EvalError},
 };
@@ -72,7 +72,8 @@ fn main() {
             println!("{output}");
         },
         Err(error) => {
-            eprintln!("{error}")
+            eprintln!("{error}");
+            std::process::exit(1);
         },
     }
 }
@@ -95,7 +96,10 @@ impl<'src> From<LexError<'src>> for Error<'src> {
 
 impl<'src> From<ParseError<'src>> for Error<'src> {
     fn from(error: ParseError<'src>) -> Self {
-        Self::Parse(error)
+        match error.kind {
+            ParseErrorKind::Lex(kind) => Self::Lex(Spanned::new(kind, error.span)),
+            _ => Self::Parse(error),
+        }
     }
 }
 
