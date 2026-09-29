@@ -241,7 +241,7 @@ mod tests {
     #[test]
     fn display_follows_specification_format() {
         let output: Vec<_> =
-            tokenise("33 + (912 * 11))").unwrap().iter().map(ToString::to_string).collect();
+            tokenise("(33 + (912 * 11))").unwrap().iter().map(ToString::to_string).collect();
 
         let expected = [
             r#"<OpenParen, '(', 0>"#,
