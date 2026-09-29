@@ -50,7 +50,7 @@ impl Command {
         match self {
             Self::Build { .. } => unreachable!("build was not implemented for this delivery"),
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
-            Self::Eval { .. } => Ok(format!("{}", interpreter::evaluate(&parser::parse(src)?)?)),
+            Self::Eval { .. } => Ok(format!("{}\n", interpreter::evaluate(&parser::parse(src)?)?)),
             Self::Lex { .. } => {
                 Ok(lexer::tokenise(src)?.iter().map(|token| format!("{token}\n")).collect())
             },
@@ -69,7 +69,7 @@ fn main() {
 
     match command.run(&src) {
         Ok(output) => {
-            println!("{output}");
+            print!("{output}");
         },
         Err(error) => {
             eprintln!("{error}");
