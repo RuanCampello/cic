@@ -8,7 +8,9 @@ other compiler language project, the [nyx compiler](https://gitlab.com/ruancampe
 
 This is meant to be run only on x86-64 especially with Linux idiosyncrasies and tools.
 
-The group is formed by me only. I didn't use any LLM at this stage of the project.
+The group is formed by me only. 
+
+LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tree.rs`) and to validate the generated assembly. Everything else was written by me.
 
 ---
 
@@ -27,9 +29,20 @@ cargo build --release
 To run the compiler, those are the commands you might wanna use:
 
 ```sh
-cargo run -- lex   [file]   # token sequence
-cargo run -- parse [file]   # syntax tree
-cargo run -- eval  [file]   # value of the expression
+cargo run -- lex   [file]            # token sequence
+cargo run -- parse [file]            # syntax tree
+cargo run -- eval  [file]            # value of the expression
+cargo run -- build [file] [-o out.s] # assembly (defaults to [file].s)
+```
+
+To turn the generated assembly into an executable, `runtime.s` (in `asm/`) must be
+in the same directory as the `.s` file:
+
+```sh
+cp asm/runtime.s .
+as --64 -o p1.o p1.s
+ld -o p1 p1.o
+./p1
 ```
 
 You can also use `target/release/cic`, of course, to run it manually after building :D
