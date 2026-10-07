@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 use std::{fs, path::PathBuf};
 
 use cic::{
-    self,
+    self, codegen,
     frontend::{
         lexer::{self, LexError, Spanned},
         parser::{self, ParseError, ParseErrorKind},
@@ -20,7 +20,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Compiles a ci file to a native x86-64 executable
-    Build { path: PathBuf },
+    Build {
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
     /// Parses and print the syntax tree for a ci file
     Parse { path: PathBuf },
     /// Evaluate and print a ci program
@@ -39,7 +43,7 @@ enum Error<'err> {
 impl Command {
     const fn path(&self) -> &PathBuf {
         match self {
-            Self::Build { path }
+            Self::Build { path, .. }
             | Self::Parse { path }
             | Self::Eval { path }
             | Self::Lex { path } => path,
@@ -48,7 +52,7 @@ impl Command {
 
     fn run<'src>(&self, src: &'src str) -> Result<String, Error<'src>> {
         match self {
-            Self::Build { .. } => unreachable!("build was not implemented for this delivery"),
+            Self::Build { .. } => Ok(codegen::generate(&parser::parse(src)?)),
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
             Self::Eval { .. } => Ok(format!("{}\n", interpreter::evaluate(&parser::parse(src)?)?)),
             Self::Lex { .. } => {
