@@ -71,14 +71,20 @@ fn main() {
         std::process::exit(1)
     };
 
-    match command.run(&src) {
-        Ok(output) => {
-            print!("{output}");
+    let result = command.run(&src).unwrap_or_else(|err| {
+        eprintln!("{err}");
+        std::process::exit(1);
+    });
+
+    match command {
+        Command::Build { path, output } => {
+            let dest = output.clone().unwrap_or_else(|| path.with_extension("s"));
+            if let Err(error) = fs::write(&dest, result) {
+                eprintln!("couldn't write {}: {error}", dest.display());
+                std::process::exit(1);
+            }
         },
-        Err(error) => {
-            eprintln!("{error}");
-            std::process::exit(1);
-        },
+        _ => println!("{result}"),
     }
 }
 
