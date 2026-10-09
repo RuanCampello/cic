@@ -1,10 +1,60 @@
-use std::process;
+use std::{
+    fs,
+    process::{self, Command},
+};
+
+fn compile_and_run(name: &str, program: &str) -> String {
+    let dir = std::env::temp_dir().join(format!("cic-{name}-{}", process::id()));
+
+    fs::create_dir_all(&dir).expect("temp dir to be creatable");
+    fs::copy("asm/runtime.s", dir.join("runtime.s")).expect("asm/runtime to exist");
+    fs::write(dir.join("p.ci"), program).expect("program to be executable");
+
+    let steps: [&[&str]; _] = [
+        &[env!("CARGO_BIN_EXE_cic"), "build", "p.ci"],
+        &["as", "--64", "-o", "p.o", "p.s"],
+        &["ld", "-o", "p", "p.o"],
+    ];
+
+    for step in steps {
+        let (cmd, args) = step.split_first().expect("step to have a cmd");
+
+        let status = Command::new(cmd)
+            .args(args)
+            .current_dir(&dir)
+            .status()
+            .unwrap_or_else(|err| panic!("couldn't run {cmd}: {err}"));
+
+        assert!(status.success(), "{cmd} failed for {program}");
+    }
+
+    let output = Command::new(dir.join("p")).output().expect("compiled program to run");
+    assert!(output.status.success());
+    String::from_utf8(output.stdout).expect("stdout to be utf8")
+}
 
 fn cic(subcommand: &str, program: &str) -> process::Output {
-    process::Command::new(env!("CARGO_BIN_EXE_cic"))
+    Command::new(env!("CARGO_BIN_EXE_cic"))
         .args([subcommand, &format!("tests/fixtures/{program}")])
         .output()
         .expect("cic binary to be built")
+}
+
+#[test]
+fn compiled_programs_print_their_value() {
+    let cases = [
+        ("constant", "333", "333"),
+        ("mul", "(6 * 7)", "42"),
+        ("nested", "(3 + (4 + (11 + 7)))", "25"),
+        ("spec", "((427 / 7) + (11 * (231 + 5)))", "2657"),
+        ("operand_order", "(100 - (20 /3))", "94"),
+        ("negative", "(3 - 10)", "-7"),
+        ("i64_max", "9223372036854775807", "9223372036854775807"),
+    ];
+
+    for (name, program, expected) in cases {
+        assert_eq!(compile_and_run(name, program), format!("{expected}\n"), "{program}");
+    }
 }
 
 #[test]
