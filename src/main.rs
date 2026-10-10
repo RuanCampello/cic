@@ -84,7 +84,7 @@ fn main() {
                 std::process::exit(1);
             }
         },
-        _ => println!("{result}"),
+        _ => print!("{result}"),
     }
 }
 
