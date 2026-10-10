@@ -41,6 +41,13 @@ fn compiled_programs_print_their_value() {
 }
 
 #[test]
+fn run_ok_program() {
+    let output = cic("run", "ok.ci");
+    assert!(output.status.success());
+    assert_eq!(stdout(&output), ["2657"]);
+}
+
+#[test]
 fn eval_ok_program() {
     let output = cic("eval", "ok.ci");
     assert!(output.status.success());
