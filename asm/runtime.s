@@ -33,8 +33,9 @@ loop_L0:
   jnz loop_L0
   test %r10, %r10
   jz print_L0
-  movb $45, buffer(%rcx)
-  dec %rcx
+  movb $45, buffer(%rcx) # escreve o -
+  inc %r9 # inc o len q vai pro write
+  dec %rcx # atualiza o index
   jmp print_L0
 
 printzero_L0:
