@@ -3,32 +3,15 @@ use std::{
     process::{self, Command},
 };
 
+use cic::{codegen, frontend::parser, toolchain};
+
 fn compile_and_run(name: &str, program: &str) -> String {
     let dir = std::env::temp_dir().join(format!("cic-{name}-{}", process::id()));
+    let asm = codegen::generate(&parser::parse(program).expect("test program to be valid"));
 
-    fs::create_dir_all(&dir).expect("temp dir to be creatable");
-    fs::copy("asm/runtime.s", dir.join("runtime.s")).expect("asm/runtime to exist");
-    fs::write(dir.join("p.ci"), program).expect("program to be executable");
+    let output = Command::new(toolchain::link(&asm, &dir)).output().expect("program to run");
+    fs::remove_dir_all(&dir).expect("temp dir to be removable");
 
-    let steps: [&[&str]; _] = [
-        &[env!("CARGO_BIN_EXE_cic"), "build", "p.ci"],
-        &["as", "--64", "-o", "p.o", "p.s"],
-        &["ld", "-o", "p", "p.o"],
-    ];
-
-    for step in steps {
-        let (cmd, args) = step.split_first().expect("step to have a cmd");
-
-        let status = Command::new(cmd)
-            .args(args)
-            .current_dir(&dir)
-            .status()
-            .unwrap_or_else(|err| panic!("couldn't run {cmd}: {err}"));
-
-        assert!(status.success(), "{cmd} failed for {program}");
-    }
-
-    let output = Command::new(dir.join("p")).output().expect("compiled program to run");
     assert!(output.status.success());
     String::from_utf8(output.stdout).expect("stdout to be utf8")
 }

@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::{fs, path::PathBuf};
+use std::{fs, os::unix::process::ExitStatusExt, path::PathBuf, process};
 
 use cic::{
     self, codegen,
@@ -8,6 +8,7 @@ use cic::{
         parser::{self, ParseError, ParseErrorKind},
     },
     interpreter::{self, EvalError},
+    toolchain,
 };
 
 #[derive(Parser)]
@@ -25,6 +26,8 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Compiles a ci file and runs it natively
+    Run { path: PathBuf },
     /// Parses and print the syntax tree for a ci file
     Parse { path: PathBuf },
     /// Evaluate and print a ci program
@@ -46,13 +49,14 @@ impl Command {
             Self::Build { path, .. }
             | Self::Parse { path }
             | Self::Eval { path }
+            | Self::Run { path }
             | Self::Lex { path } => path,
         }
     }
 
     fn run<'src>(&self, src: &'src str) -> Result<String, Error<'src>> {
         match self {
-            Self::Build { .. } => Ok(codegen::generate(&parser::parse(src)?)),
+            Self::Build { .. } | Self::Run { .. } => Ok(codegen::generate(&parser::parse(src)?)),
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
             Self::Eval { .. } => Ok(format!("{}\n", interpreter::evaluate(&parser::parse(src)?)?)),
             Self::Lex { .. } => {
@@ -84,7 +88,25 @@ fn main() {
                 std::process::exit(1);
             }
         },
+        Command::Run { .. } => process::exit(execute(&result)),
         _ => print!("{result}"),
+    }
+}
+
+fn execute(asm: &str) -> i32 {
+    let dir = std::env::temp_dir().join(format!("cic-run-{}", process::id()));
+    let binary = toolchain::link(asm, &dir);
+
+    let status = process::Command::new(binary).status().expect("linked program to run");
+    fs::remove_dir_all(dir).expect("temp dir to be removable");
+
+    match (status.code(), status.signal()) {
+        (Some(code), _) => code,
+        (_, Some(signal)) => {
+            eprintln!("program killed by signal: {signal}");
+            128 + signal
+        },
+        _ => unreachable!("a process must end with a exit code or signal"),
     }
 }
 

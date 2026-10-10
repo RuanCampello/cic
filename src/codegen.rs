@@ -3,6 +3,7 @@
 use crate::frontend::parser::{BinaryOperator, Expression, ExpressionKind};
 use std::fmt::Write;
 
+pub const RUNTIME: &str = include_str!("../asm/runtime.s");
 const TEMPLATE: &str = include_str!("../asm/modelo.s");
 const MARKER: &str = "  ## saida do compilador deve ser inserida aqui\n";
 
