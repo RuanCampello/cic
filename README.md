@@ -33,6 +33,7 @@ cargo run -- lex   [file]            # token sequence
 cargo run -- parse [file]            # syntax tree
 cargo run -- eval  [file]            # value of the expression
 cargo run -- build [file] [-o out.s] # assembly (defaults to [file].s)
+cargo run -- run   [file]            # compiles and runs natively
 ```
 
 To turn the generated assembly into an executable, `runtime.s` (in `asm/`) must be
