@@ -8,7 +8,7 @@ other compiler language project, the [nyx compiler](https://gitlab.com/ruancampe
 
 This is meant to be run only on x86-64 especially with Linux idiosyncrasies and tools.
 
-The group is formed by me only. 
+Group: Ruan Campello - 20240101758 (solo)
 
 LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tree.rs`) and to validate the generated assembly. Everything else was written by me.
 
@@ -19,6 +19,10 @@ To run the testing cases, as it is in any Rust project, you might run:
 ```sh
 cargo test
 ```
+
+Unit tests cover the lexer, parser, interpreter. Integration test run `lex`/`parse`/`eval`
+on `tests/fixtures/` (a correct program, a lexical error and a syntax error), and compile
+assemble, link and run several program checking the printed value.
 
 To build the binary (of the compiler itself), run: 
 
