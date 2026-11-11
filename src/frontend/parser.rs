@@ -184,8 +184,6 @@ impl<'src> Parsable<'src> for Declaration<'src> {
     }
 }
 
-impl<'src> Parser<'src> {}
-
 impl BinaryOperator {
     const LOWEST_PRECEDENCE: u8 = 1;
 
