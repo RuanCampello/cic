@@ -9,14 +9,10 @@ pub type LexError<'src> = Spanned<LexErrorKind<'src>>;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TokenKind<'src> {
+    Ident(&'src str),
     Integer(i64),
     Punct(Punct),
     Eof,
-    /// we will probably have some variant to hold an str, I'm used to that
-    /// and have have passed the pain to add a lifetime to an enum that doesn't have it
-    /// too many times in rust so I'll just put this here now in case we need in the future
-    #[doc(hidden)]
-    _M(std::marker::PhantomData<&'src ()>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +76,7 @@ impl<'src> Lexer<'src> {
 
         let punct = match c {
             '0'..='9' => return self.number(start),
+            'a'..='z' | 'A'..'Z' => return Ok(self.ident(start)),
             '+' => Punct::Plus,
             '-' => Punct::Minus,
             '*' => Punct::Star,
@@ -107,6 +104,17 @@ impl<'src> Lexer<'src> {
             Ok(value) => Ok(Spanned::new(TokenKind::Integer(value), span)),
             _ => Err(Spanned::new(LexErrorKind::InvalidInteger(slice), span)),
         }
+    }
+
+    fn ident(&mut self, start: usize) -> Token<'src> {
+        let span = self.alphanumeric(start);
+        Spanned::new(TokenKind::Ident(span.slice(self.src)), span)
+    }
+
+    fn alphanumeric(&mut self, start: usize) -> Span {
+        let len = self.src[start..].bytes().take_while(u8::is_ascii_alphanumeric).count();
+        self.position = start + len;
+        Span::new(start, self.position)
     }
 
     fn skip_whitespaces(&mut self) {
@@ -169,7 +177,7 @@ impl std::fmt::Display for Token<'_> {
                 write!(f, "<{punct:?}, '{}', {position}>", char::from(punct))
             },
             TokenKind::Eof => write!(f, "<Eof, {position}>"),
-            TokenKind::_M(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 }

@@ -1,6 +1,3 @@
-use clap::{Parser, Subcommand};
-use std::{fs, os::unix::process::ExitStatusExt, path::PathBuf, process};
-
 use cic::{
     self, codegen,
     frontend::{
@@ -8,8 +5,11 @@ use cic::{
         parser::{self, ParseError, ParseErrorKind},
     },
     interpreter::{self, EvalError},
+    semantic::{self, SemanticError},
     toolchain,
 };
+use clap::{Parser, Subcommand};
+use std::{fs, os::unix::process::ExitStatusExt, path::PathBuf, process};
 
 #[derive(Parser)]
 #[command(name = "cic", version)]
@@ -40,6 +40,7 @@ enum Command {
 enum Error<'err> {
     Lex(LexError<'err>),
     Parse(ParseError<'err>),
+    Semantic(SemanticError<'err>),
     Eval(EvalError),
 }
 
@@ -56,9 +57,17 @@ impl Command {
 
     fn run<'src>(&self, src: &'src str) -> Result<String, Error<'src>> {
         match self {
-            Self::Build { .. } | Self::Run { .. } => Ok(codegen::generate(&parser::parse(src)?)),
+            Self::Build { .. } | Self::Run { .. } => {
+                let program = parser::parse(src)?;
+                let symbols = semantic::analyse(&program)?;
+                Ok(codegen::generate(&program, &symbols))
+            },
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
-            Self::Eval { .. } => Ok(format!("{}\n", interpreter::evaluate(&parser::parse(src)?)?)),
+            Self::Eval { .. } => {
+                let program = parser::parse(src)?;
+                let symbols = semantic::analyse(&program)?;
+                Ok(format!("{}\n", interpreter::evaluate(&program)?))
+            },
             Self::Lex { .. } => {
                 Ok(lexer::tokenise(src)?.iter().map(|token| format!("{token}\n")).collect())
             },
@@ -116,6 +125,7 @@ impl std::fmt::Display for Error<'_> {
             Self::Lex(lex) => write!(f, "{lex}"),
             Self::Parse(parse) => write!(f, "{parse}"),
             Self::Eval(eval) => write!(f, "{eval}"),
+            Self::Semantic(semantic) => write!(f, "{semantic}"),
         }
     }
 }
@@ -123,6 +133,12 @@ impl std::fmt::Display for Error<'_> {
 impl<'src> From<LexError<'src>> for Error<'src> {
     fn from(error: LexError<'src>) -> Self {
         Self::Lex(error)
+    }
+}
+
+impl<'src> From<SemanticError<'src>> for Error<'src> {
+    fn from(error: SemanticError<'src>) -> Self {
+        Self::Semantic(error)
     }
 }
 

@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
 use thiserror::Error;
 
 use crate::frontend::{
     lexer::Spanned,
-    parser::{BinaryOperator, Expression, ExpressionKind},
+    parser::{BinaryOperator, Expression, ExpressionKind, Program},
 };
 
 #[derive(Debug, PartialEq, Error)]
@@ -14,12 +16,27 @@ pub enum EvalErrorKind {
 }
 
 pub type EvalError = Spanned<EvalErrorKind>;
+pub type Environment<'src> = HashMap<&'src str, i64>;
 
-pub fn evaluate(expr: &Expression<'_>) -> Result<i64, EvalError> {
+pub fn evaluate<'src>(program: &Program<'src>) -> Result<i64, EvalError> {
+    let mut env = Environment::new();
+
+    for declaration in &program.declarations {
+        let value = eval(&declaration.value, &env)?;
+        env.insert(declaration.name.kind, value);
+    }
+
+    eval(&program.result, &env)
+}
+
+fn eval(expr: &Expression<'_>, env: &Environment) -> Result<i64, EvalError> {
     match &expr.kind {
         ExpressionKind::Integer(int) => Ok(*int),
+        ExpressionKind::Variable(name) => Ok(*env
+            .get(name)
+            .unwrap_or_else(|| unreachable!("semantic analysis let undeclared `{name}`"))),
         ExpressionKind::Binary { left, operator, right } => {
-            let (lhs, rhs) = (evaluate(left)?, evaluate(right)?);
+            let (lhs, rhs) = (eval(left, env)?, eval(right, env)?);
 
             let result = match operator {
                 BinaryOperator::Add => lhs.checked_add(rhs),
@@ -33,7 +50,6 @@ pub fn evaluate(expr: &Expression<'_>) -> Result<i64, EvalError> {
 
             result.ok_or(Spanned::new(EvalErrorKind::Overflow, expr.span))
         },
-        _ => unreachable!(),
     }
 }
 
@@ -47,10 +63,16 @@ impl std::fmt::Display for EvalError {
 mod tests {
     use super::*;
     use crate::frontend::parser::parse;
+    use crate::semantic::analyse;
+
+    fn run(src: &str) -> Result<i64, EvalError> {
+        let program = parse(src).unwrap();
+        let _ = analyse(&program).unwrap();
+        evaluate(&program)
+    }
 
     #[test]
     fn evaluate_example() {
-        let example = "((427 / 7) + (11 * (231 + 5)))";
-        assert_eq!(evaluate(&parse(example).unwrap()), Ok(2657));
+        assert_eq!(run("= ((427 / 7) + (11 * (231 + 5)))"), Ok(2657))
     }
 }

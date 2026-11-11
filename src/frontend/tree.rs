@@ -1,8 +1,8 @@
 //! Tree printing of the AST
 
-use crate::frontend::parser::{Expression, ExpressionKind};
+use crate::frontend::parser::{Expression, ExpressionKind, Program};
 
-pub struct Tree<'expr, 'i>(&'expr Expression<'i>);
+pub struct Tree<'p, 'i>(&'p Program<'i>);
 
 /// A rendered subtree
 struct Block {
@@ -13,11 +13,23 @@ struct Block {
 
 impl std::fmt::Display for Tree<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Block::of(self.0).rows.iter().try_for_each(|row| writeln!(f, "{row}"))
+        let declarations = self.0.declarations.iter().map(|declaration| {
+            let name = Block::leaf(declaration.name.kind.to_string());
+            Block::join('=', name, Block::of(&declaration.value))
+        });
+
+        for (i, block) in declarations.chain([Block::of(&self.0.result)]).enumerate() {
+            if i > 0 {
+                writeln!(f)?;
+            }
+            block.rows.iter().try_for_each(|row| writeln!(f, "{row}"))?;
+        }
+
+        Ok(())
     }
 }
 
-impl<'i> Expression<'i> {
+impl<'i> Program<'i> {
     pub fn tree(&self) -> Tree<'_, 'i> {
         Tree(self)
     }
@@ -30,7 +42,7 @@ impl Block {
             ExpressionKind::Binary { left, operator, right } => {
                 Self::join(char::from(*operator), Self::of(left), Self::of(right))
             },
-            ExpressionKind::_M(_) => unreachable!(),
+            _ => unreachable!(),
         }
     }
 

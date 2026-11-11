@@ -1,4 +1,5 @@
 pub mod codegen;
 pub mod frontend;
 pub mod interpreter;
+pub mod semantic;
 pub mod toolchain;

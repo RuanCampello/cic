@@ -8,20 +8,26 @@ pub struct Parser<'src> {
     lookahead: Token<'src>,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct Program<'i> {
+    pub declarations: Vec<Declaration<'i>>,
+    pub result: Expression<'i>,
+}
+
+#[derive(Debug, PartialEq)]
+pub struct Declaration<'i> {
+    pub name: Spanned<&'i str>,
+    pub value: Expression<'i>,
+}
+
 pub type Expression<'i> = Spanned<ExpressionKind<'i>>;
 pub type ParseError<'src> = Spanned<ParseErrorKind<'src>>;
 
 #[derive(Debug, PartialEq)]
 pub enum ExpressionKind<'i> {
+    Variable(&'i str),
     Integer(i64),
-    Binary {
-        left: Box<Expression<'i>>,
-        operator: BinaryOperator,
-        right: Box<Expression<'i>>,
-    },
-    /// same reason as [crate::lexer::TokenKind::_M]
-    #[doc(hidden)]
-    _M(std::marker::PhantomData<&'i ()>),
+    Binary { left: Box<Expression<'i>>, operator: BinaryOperator, right: Box<Expression<'i>> },
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -48,7 +54,7 @@ pub trait Parsable<'src>: Sized {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>>;
 }
 
-pub fn parse(src: &str) -> Result<Expression<'_>, ParseError<'_>> {
+pub fn parse(src: &str) -> Result<Program<'_>, ParseError<'_>> {
     let mut parser = Parser::new(src)?;
     let expr = parser.parse_node()?;
     parser.expect_eof()?;
@@ -98,6 +104,12 @@ impl<'src> Parser<'src> {
     #[inline(always)]
     fn error(&self, kind: ParseErrorKind<'src>) -> ParseError<'src> {
         Spanned::new(kind, self.lookahead.span)
+    }
+}
+
+impl<'src> Parsable<'src> for Program<'src> {
+    fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
+        todo!()
     }
 }
 
@@ -174,9 +186,15 @@ impl std::fmt::Display for ParseError<'_> {
 mod tests {
     use super::*;
 
+    fn result(src: &str) -> Expression<'_> {
+        let program = parse(src).unwrap();
+        assert!(program.declarations.is_empty());
+        program.result
+    }
+
     #[test]
     fn specification_example_structure() {
-        let expr = parse("(33 + (912 * 11))").unwrap();
+        let expr = result("(33 + (912 * 11))");
         assert_eq!(expr.span, Span::new(0, 17));
 
         let ExpressionKind::Binary { right, left, operator } = &expr.kind else {
