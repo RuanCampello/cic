@@ -26,7 +26,7 @@ macro_rules! inst {
 pub fn generate(program: &Program<'_>, symbols: &SymbolTable<'_>) -> String {
     assert!(
         TEMPLATE.contains(VARIABLES_MARKER),
-        "modelo.s must contains the insertion marker"
+        "modelo.s must contain the variables marker"
     );
     assert!(TEMPLATE.contains(CODE_MARKER), "modelo.s must contain the code marker");
 
@@ -40,7 +40,9 @@ pub fn generate(program: &Program<'_>, symbols: &SymbolTable<'_>) -> String {
         emit(&declaration.value, symbols, &mut code);
         inst!(code, "mov %rax, {}", Symbol(declaration.name.kind));
     }
-    TEMPLATE.replace(VARIABLES_MARKER, &code)
+    emit(&program.result, symbols, &mut code);
+
+    TEMPLATE.replace(VARIABLES_MARKER, &variables).replace(CODE_MARKER, &code)
 }
 
 fn emit(expr: &Expression<'_>, symbols: &SymbolTable<'_>, out: &mut String) {
