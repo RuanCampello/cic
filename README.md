@@ -14,15 +14,38 @@ LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tr
 
 ---
 
+The compiler implements expressions with variables with the syntax
+from the specification, no variation:
+
+```
+<programa> ::= <decl>* '=' <exp>
+<decl>     ::= <ident> '=' <exp> ';'
+<exp>      ::= <exp_m> (('+' | '-') <exp_m>)*
+<exp_m>    ::= <prim> (('*' | '/') <prim>)*
+<prim>     ::= <num> | <ident> | '(' <exp> ')'
+```
+
+```
+x = (7 + 4) * 12;
+y = x * 3 + 11;
+= (x * y) + (x * 11) + (y * 13)
+```
+
+Using a variable before its declaration is a semantic error, reported before any code
+is generated. Variables are 64-bit integers placed in the `.bss` section.
+
+---
+
 To run the testing cases, as it is in any Rust project, you might run:
 
 ```sh
 cargo test
 ```
 
-Unit tests cover the lexer, parser, interpreter. Integration test run `lex`/`parse`/`eval`
-on `tests/fixtures/` (a correct program, a lexical error and a syntax error), and compile
-assemble, link and run several program checking the printed value.
+Unit tests cover the lexer, parser, semantic analysis and interpreter. Integration tests
+run `lex`/`parse`/`eval`/`run` on `tests/fixtures/` (a correct program, a lexical error,
+a syntax error and an undeclared variable), and compile, assemble, link and run several
+programs, with and without variables, checking the printed value.
 
 To build the binary (of the compiler itself), run: 
 
