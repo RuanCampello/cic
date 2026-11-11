@@ -35,6 +35,8 @@ pub enum LexErrorKind<'src> {
     UnexpectedChar(char),
     #[error("integer '{0}' doesn't fit in 64 bits")]
     InvalidInteger(&'src str),
+    #[error("'{0}' is not a valid number")]
+    InvalidNumber(&'src str),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -77,7 +79,9 @@ impl<'src> Lexer<'src> {
 
         let punct = match c {
             '0'..='9' => return self.number(start),
-            'a'..='z' | 'A'..'Z' => return Ok(self.ident(start)),
+            'a'..='z' | 'A'..='Z' => return Ok(self.ident(start)),
+            '=' => Punct::Equal,
+            ';' => Punct::Semicolon,
             '+' => Punct::Plus,
             '-' => Punct::Minus,
             '*' => Punct::Star,
@@ -95,11 +99,12 @@ impl<'src> Lexer<'src> {
     }
 
     fn number(&mut self, start: usize) -> Result<Token<'src>, LexError<'src>> {
-        let len = self.src[start..].bytes().take_while(u8::is_ascii_digit).count();
-        self.position = start + len;
-        let span = Span::new(start, self.position);
-
+        let span = self.alphanumeric(start);
         let slice = span.slice(self.src);
+
+        if !slice.bytes().all(|b| b.is_ascii_digit()) {
+            return Err(Spanned::new(LexErrorKind::InvalidNumber(slice), span));
+        }
 
         match slice.parse::<i64>() {
             Ok(value) => Ok(Spanned::new(TokenKind::Integer(value), span)),
@@ -175,12 +180,12 @@ impl std::fmt::Display for Token<'_> {
         let position = self.span.start;
 
         match self.kind {
+            TokenKind::Ident(ident) => write!(f, "<Ident, '{ident}', {position}>"),
             TokenKind::Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
             TokenKind::Punct(punct) => {
                 write!(f, "<{punct:?}, '{}', {position}>", char::from(punct))
             },
             TokenKind::Eof => write!(f, "<Eof, {position}>"),
-            _ => unreachable!(),
         }
     }
 }
@@ -188,10 +193,10 @@ impl std::fmt::Display for Token<'_> {
 impl std::fmt::Display for TokenKind<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Ident(ident) => write!(f, "identifier: `{ident}`"),
             Self::Integer(int) => write!(f, "integer: `{int}`"),
             Self::Punct(punct) => write!(f, "`{}`", char::from(*punct)),
             Self::Eof => f.write_str("end of input"),
-            _ => unreachable!(),
         }
     }
 }
@@ -279,8 +284,30 @@ mod tests {
 
     #[test]
     fn unexpected_char_is_rejected() {
-        let tokens = tokenise("(1 + a)").unwrap_err();
-        assert!(matches!(tokens.kind, LexErrorKind::UnexpectedChar('a')));
+        let tokens = tokenise("(1 + $)").unwrap_err();
+        assert!(matches!(tokens.kind, LexErrorKind::UnexpectedChar('$')));
         assert_eq!(tokens.span, Span::new(5, 6))
+    }
+
+    #[test]
+    fn declarations_are_tokenised() {
+        let tokens = tokenise("Zx1 = 7;\n= Zx1").unwrap();
+        let expected: [TokenKind; 6] = [
+            TokenKind::Ident("Zx1"),
+            Punct::Equal.into(),
+            7.into(),
+            Punct::Semicolon.into(),
+            Punct::Equal.into(),
+            TokenKind::Ident("Zx1"),
+        ];
+
+        assert_eq!(tokens.iter().map(|token| token.kind).collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn number_followed_by_letters_is_rejected() {
+        let error = tokenise("x = 237axy;").unwrap_err();
+        assert_eq!(error.kind, LexErrorKind::InvalidNumber("237axy"));
+        assert_eq!(error.span, Span::new(4, 10))
     }
 }
