@@ -65,7 +65,7 @@ impl Command {
             Self::Parse { .. } => Ok(parser::parse(src)?.tree().to_string()),
             Self::Eval { .. } => {
                 let program = parser::parse(src)?;
-                let symbols = semantic::analyse(&program)?;
+                semantic::analyse(&program)?;
                 Ok(format!("{}\n", interpreter::evaluate(&program)?))
             },
             Self::Lex { .. } => {
