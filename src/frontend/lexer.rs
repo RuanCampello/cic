@@ -39,11 +39,12 @@ pub enum LexErrorKind<'src> {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Punct {
-    Plus,  // +
-    Minus, // -
-    Star,  // *
-    Slash, // /
-
+    Plus,       // +
+    Minus,      // -
+    Star,       // *
+    Slash,      // /
+    Equal,      // =
+    Semicolon,  // ;
     OpenParen,  // (
     CloseParen, // )
 }
@@ -157,6 +158,8 @@ impl<K> Spanned<K> {
 impl From<Punct> for char {
     fn from(punct: Punct) -> Self {
         match punct {
+            Punct::Equal => '=',
+            Punct::Semicolon => ';',
             Punct::Plus => '+',
             Punct::Minus => '-',
             Punct::Star => '*',

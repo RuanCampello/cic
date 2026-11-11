@@ -101,6 +101,48 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn binary(&mut self, min_precedence: u8) -> Result<Expression<'src>, ParseError<'src>> {
+        let mut left = self.primary()?;
+
+        while let Some(operator) = BinaryOperator::from_token(self.peek().kind)
+            && operator.precedence() >= min_precedence
+        {
+            self.advance()?;
+            // `+ 1` makes operators of the same level left associative
+            let right = self.binary(operator.precedence() + 1)?;
+            let span = left.span.merge(right.span);
+            let kind =
+                ExpressionKind::Binary { left: Box::new(left), operator, right: Box::new(right) };
+
+            left = Spanned::new(kind, span);
+        }
+
+        Ok(left)
+    }
+
+    fn primary(&mut self) -> Result<Expression<'src>, ParseError<'src>> {
+        let token = self.peek();
+
+        match token.kind {
+            TokenKind::Integer(int) => {
+                self.advance()?;
+                Ok(Spanned::new(ExpressionKind::Integer(int), token.span))
+            },
+            TokenKind::Ident(ident) => {
+                self.advance()?;
+                Ok(Spanned::new(ExpressionKind::Variable(ident), token.span))
+            },
+            TokenKind::Punct(Punct::OpenParen) => {
+                self.advance()?;
+                let inner = self.parse_node::<Expression>()?;
+                let close = self.expect_punct(Punct::CloseParen)?;
+
+                Ok(Spanned::new(inner.kind, token.span.merge(close)))
+            },
+            found => Err(self.error(ParseErrorKind::ExpectedExpression { found })),
+        }
+    }
+
     #[inline(always)]
     fn error(&self, kind: ParseErrorKind<'src>) -> ParseError<'src> {
         Spanned::new(kind, self.lookahead.span)
@@ -109,53 +151,61 @@ impl<'src> Parser<'src> {
 
 impl<'src> Parsable<'src> for Program<'src> {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
-        todo!()
+        let mut declarations = Vec::new();
+
+        while let TokenKind::Ident(_) = parser.peek().kind {
+            declarations.push(parser.parse_node()?);
+        }
+
+        parser.expect_punct(Punct::Equal)?;
+        let result = parser.parse_node()?;
+
+        Ok(Self { declarations, result })
     }
 }
 
 impl<'src> Parsable<'src> for Expression<'src> {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
-        let token = parser.peek();
-
-        match token.kind {
-            TokenKind::Integer(int) => {
-                parser.advance()?;
-                Ok(Spanned::new(ExpressionKind::Integer(int), token.span))
-            },
-            TokenKind::Punct(Punct::OpenParen) => {
-                parser.advance()?;
-
-                let left = parser.parse_node::<Expression>()?;
-                let operator = parser.parse_node::<BinaryOperator>()?;
-                let right = parser.parse_node::<Expression>()?;
-
-                let close = parser.expect_punct(Punct::CloseParen)?;
-
-                let kind = ExpressionKind::Binary {
-                    operator,
-                    left: Box::new(left),
-                    right: Box::new(right),
-                };
-
-                Ok(Spanned::new(kind, token.span.merge(close)))
-            },
-            found => Err(parser.error(ParseErrorKind::ExpectedExpression { found })),
-        }
+        parser.binary(BinaryOperator::LOWEST_PRECEDENCE)
     }
 }
 
-impl<'src> Parsable<'src> for BinaryOperator {
+impl<'src> Parsable<'src> for Declaration<'src> {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
-        let operator = match parser.peek().kind {
-            TokenKind::Punct(Punct::Plus) => BinaryOperator::Add,
-            TokenKind::Punct(Punct::Minus) => BinaryOperator::Sub,
-            TokenKind::Punct(Punct::Star) => BinaryOperator::Mul,
-            TokenKind::Punct(Punct::Slash) => BinaryOperator::Div,
-            found => return Err(parser.error(ParseErrorKind::ExpectedOperator { found })),
+        let token = parser.peek();
+        let TokenKind::Ident(ident) = token.kind else {
+            unreachable!("declarations are only parsed when the lookahead is an identifier")
         };
-
         parser.advance()?;
-        Ok(operator)
+
+        parser.expect_punct(Punct::Equal)?;
+        let value = parser.parse_node()?;
+        parser.expect_punct(Punct::Semicolon)?;
+
+        Ok(Self { name: Spanned::new(ident, token.span), value })
+    }
+}
+
+impl<'src> Parser<'src> {}
+
+impl BinaryOperator {
+    const LOWEST_PRECEDENCE: u8 = 1;
+
+    fn from_token(kind: TokenKind<'_>) -> Option<Self> {
+        match kind {
+            TokenKind::Punct(Punct::Plus) => Some(Self::Add),
+            TokenKind::Punct(Punct::Minus) => Some(Self::Sub),
+            TokenKind::Punct(Punct::Star) => Some(Self::Mul),
+            TokenKind::Punct(Punct::Slash) => Some(Self::Div),
+            _ => None,
+        }
+    }
+
+    const fn precedence(self) -> u8 {
+        match self {
+            Self::Add | Self::Sub => 1,
+            Self::Mul | Self::Div => 2,
+        }
     }
 }
 
