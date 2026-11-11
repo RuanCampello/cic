@@ -39,10 +39,10 @@ impl Block {
     fn of(expr: &Expression) -> Self {
         match &expr.kind {
             ExpressionKind::Integer(int) => Self::leaf(int.to_string()),
+            ExpressionKind::Variable(name) => Self::leaf(name.to_string()),
             ExpressionKind::Binary { left, operator, right } => {
                 Self::join(char::from(*operator), Self::of(left), Self::of(right))
             },
-            _ => unreachable!(),
         }
     }
 
