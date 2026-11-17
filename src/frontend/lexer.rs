@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 pub struct Lexer<'src> {
     src: &'src str,
     position: usize,
@@ -11,6 +13,7 @@ pub type LexError<'src> = Spanned<LexErrorKind<'src>>;
 pub enum TokenKind<'src> {
     Ident(&'src str),
     Integer(i64),
+    Keyword(Keyword),
     Punct(Punct),
     Eof,
 }
@@ -45,10 +48,21 @@ pub enum Punct {
     Minus,      // -
     Star,       // *
     Slash,      // /
-    Equal,      // =
+    Eq,         // =
+    EqEq,       // ==
     Semicolon,  // ;
     OpenParen,  // (
     CloseParen, // )
+    OpenBrace,  // {
+    CloseBrace, // }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Keyword {
+    If,
+    Else,
+    While,
+    Return,
 }
 
 pub fn tokenise(src: &str) -> Result<Vec<Token<'_>>, LexError<'_>> {
@@ -80,7 +94,8 @@ impl<'src> Lexer<'src> {
         let punct = match c {
             '0'..='9' => return self.number(start),
             'a'..='z' | 'A'..='Z' => return Ok(self.ident(start)),
-            '=' => Punct::Equal,
+            '=' if self.src[start + 1..].starts_with('=') => Punct::EqEq,
+            '=' => Punct::Eq,
             ';' => Punct::Semicolon,
             '+' => Punct::Plus,
             '-' => Punct::Minus,
@@ -114,7 +129,14 @@ impl<'src> Lexer<'src> {
 
     fn ident(&mut self, start: usize) -> Token<'src> {
         let span = self.alphanumeric(start);
-        Spanned::new(TokenKind::Ident(span.slice(self.src)), span)
+        let token = span.slice(self.src);
+
+        let kind = match Keyword::from_str(token) {
+            Ok(keyword) => TokenKind::Keyword(keyword),
+            _ => TokenKind::Ident(token),
+        };
+
+        Spanned::new(kind, span)
     }
 
     fn alphanumeric(&mut self, start: usize) -> Span {
@@ -160,32 +182,60 @@ impl<K> Spanned<K> {
     }
 }
 
-impl From<Punct> for char {
-    fn from(punct: Punct) -> Self {
-        match punct {
-            Punct::Equal => '=',
-            Punct::Semicolon => ';',
-            Punct::Plus => '+',
-            Punct::Minus => '-',
-            Punct::Star => '*',
-            Punct::Slash => '/',
-            Punct::OpenParen => '(',
-            Punct::CloseParen => ')',
+impl Keyword {
+    pub const fn as_str(&self) -> &str {
+        match self {
+            Self::If => "if",
+            Self::Else => "else",
+            Self::While => "while",
+            Self::Return => "return",
         }
+    }
+}
+
+impl Punct {
+    pub const fn as_str(&self) -> &str {
+        match self {
+            Punct::Eq => "=",
+            Punct::EqEq => "==",
+            Punct::Semicolon => ";",
+            Punct::Plus => "+",
+            Punct::Minus => "-",
+            Punct::Star => "*",
+            Punct::Slash => "/",
+            Punct::OpenParen => "(",
+            Punct::CloseParen => ")",
+            Punct::OpenBrace => "{",
+            Punct::CloseBrace => "}",
+        }
+    }
+}
+
+impl FromStr for Keyword {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "if" => Self::If,
+            "else" => Self::Else,
+            "while" => Self::While,
+            "return" => Self::Return,
+            _ => return Err(()),
+        })
     }
 }
 
 impl std::fmt::Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TokenKind::*;
         let position = self.span.start;
 
         match self.kind {
-            TokenKind::Ident(ident) => write!(f, "<Ident, '{ident}', {position}>"),
-            TokenKind::Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
-            TokenKind::Punct(punct) => {
-                write!(f, "<{punct:?}, '{}', {position}>", char::from(punct))
-            },
-            TokenKind::Eof => write!(f, "<Eof, {position}>"),
+            Ident(ident) => write!(f, "<Ident, '{ident}', {position}>"),
+            Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
+            Punct(punct) => write!(f, "<{punct:?}, '{}', {position}>", punct.as_str()),
+            Eof => write!(f, "<Eof, {position}>"),
+            Keyword(keyword) => write!(f, "{}", keyword.as_str()),
         }
     }
 }
@@ -195,7 +245,8 @@ impl std::fmt::Display for TokenKind<'_> {
         match self {
             Self::Ident(ident) => write!(f, "identifier: `{ident}`"),
             Self::Integer(int) => write!(f, "integer: `{int}`"),
-            Self::Punct(punct) => write!(f, "`{}`", char::from(*punct)),
+            Self::Keyword(keyword) => write!(f, "keyword `{}`", keyword.as_str()),
+            Self::Punct(punct) => write!(f, "`{}`", punct.as_str()),
             Self::Eof => f.write_str("end of input"),
         }
     }
@@ -225,6 +276,12 @@ impl From<Punct> for TokenKind<'_> {
 impl From<i64> for TokenKind<'_> {
     fn from(value: i64) -> Self {
         Self::Integer(value)
+    }
+}
+
+impl From<Keyword> for TokenKind<'_> {
+    fn from(value: Keyword) -> Self {
+        Self::Keyword(value)
     }
 }
 
@@ -294,10 +351,10 @@ mod tests {
         let tokens = tokenise("Zx1 = 7;\n= Zx1").unwrap();
         let expected: [TokenKind; 6] = [
             TokenKind::Ident("Zx1"),
-            Punct::Equal.into(),
+            Punct::Eq.into(),
             7.into(),
             Punct::Semicolon.into(),
-            Punct::Equal.into(),
+            Punct::Eq.into(),
             TokenKind::Ident("Zx1"),
         ];
 

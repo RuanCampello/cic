@@ -155,7 +155,7 @@ impl<'src> Parsable<'src> for Program<'src> {
             declarations.push(parser.parse_node()?);
         }
 
-        parser.expect_punct(Punct::Equal)?;
+        parser.expect_punct(Punct::Eq)?;
         let result = parser.parse_node()?;
 
         Ok(Self { declarations, result })
@@ -176,7 +176,7 @@ impl<'src> Parsable<'src> for Declaration<'src> {
         };
         parser.advance()?;
 
-        parser.expect_punct(Punct::Equal)?;
+        parser.expect_punct(Punct::Eq)?;
         let value = parser.parse_node()?;
         parser.expect_punct(Punct::Semicolon)?;
 
@@ -299,7 +299,7 @@ mod tests {
     fn empty_input_is_rejected() {
         let error = parse("").unwrap_err();
         let expected =
-            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::Equal.into() };
+            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::Eq.into() };
         assert_eq!(error.kind, expected);
         assert_eq!(error.span, Span::new(0, 0));
     }
@@ -346,10 +346,8 @@ mod tests {
     #[test]
     fn declaration_without_semicolon_is_rejected() {
         let error = parse("x = 1\n= x").unwrap_err();
-        let expected = ParseErrorKind::Expected {
-            found: Punct::Equal.into(),
-            expected: Punct::Semicolon.into(),
-        };
+        let expected =
+            ParseErrorKind::Expected { found: Punct::Eq.into(), expected: Punct::Semicolon.into() };
         assert_eq!(error.kind, expected);
         assert_eq!(error.span, Span::new(6, 7));
     }
