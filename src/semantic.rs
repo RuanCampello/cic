@@ -1,8 +1,8 @@
 //! Semantic (contextual) analysis over the syntax tree
 
 use crate::frontend::{
-    lexer::Spanned,
-    parser::{Expression, ExpressionKind, Program},
+    lexer::{Span, Spanned},
+    parser::{Command, CommandKind, Expression, ExpressionKind, Program},
 };
 use std::collections::BTreeSet;
 
@@ -27,6 +27,7 @@ pub fn analyse<'src>(program: &Program<'src>) -> Result<SymbolTable<'src>, Seman
         symbols.variables.insert(declaration.name.kind);
     }
 
+    symbols.check_commands(&program.commands)?;
     symbols.check(&program.result)?;
     Ok(symbols)
 }
@@ -43,6 +44,33 @@ impl<'src> SymbolTable<'src> {
                 self.check(left)?;
                 self.check(right)
             },
+        }
+    }
+
+    fn check_commands(&self, commands: &[Command<'src>]) -> Result<(), SemanticError<'src>> {
+        Ok(for command in commands {
+            match &command.kind {
+                CommandKind::Assign { name, value } => {
+                    self.require(name.kind, name.span)?;
+                    self.check(value)?;
+                },
+                CommandKind::If { condition, then, otherwise } => {
+                    self.check(condition)?;
+                    self.check_commands(then)?;
+                    self.check_commands(otherwise)?;
+                },
+                CommandKind::While { condition, body } => {
+                    self.check(condition)?;
+                    self.check_commands(body)?;
+                },
+            }
+        })
+    }
+
+    fn require(&self, name: &'src str, span: Span) -> Result<(), SemanticError<'src>> {
+        match self.contains(name) {
+            true => Ok(()),
+            _ => Err(SemanticError::new(SemanticErrorKind::UndeclaredVariable(name), span)),
         }
     }
 
