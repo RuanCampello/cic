@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::frontend::{
     lexer::Spanned,
-    parser::{BinaryOperator, Expression, ExpressionKind, Program},
+    parser::{BinaryOperator, Command, CommandKind, Expression, ExpressionKind, Program},
 };
 
 #[derive(Debug, PartialEq, Error)]
@@ -26,7 +26,24 @@ pub fn evaluate<'src>(program: &Program<'src>) -> Result<i64, EvalError> {
         env.insert(declaration.name.kind, value);
     }
 
+    exec(&program.commands, &mut env)?;
     eval(&program.result, &env)
+}
+
+fn exec<'src>(commands: &[Command<'src>], env: &mut Environment<'src>) -> Result<(), EvalError> {
+    Ok(for command in commands {
+        match &command.kind {
+            CommandKind::Assign { name, value } => {
+                let value = eval(value, env)?;
+                env.insert(name.kind, value);
+            },
+            CommandKind::If { then, otherwise, .. } => {
+                exec(then, env)?;
+                exec(otherwise, env)?;
+            },
+            CommandKind::While { body, .. } => exec(body, env)?,
+        }
+    })
 }
 
 fn eval(expr: &Expression<'_>, env: &Environment) -> Result<i64, EvalError> {
