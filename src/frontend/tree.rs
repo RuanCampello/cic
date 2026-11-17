@@ -15,7 +15,7 @@ impl std::fmt::Display for Tree<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let declarations = self.0.declarations.iter().map(|declaration| {
             let name = Block::leaf(declaration.name.kind.to_string());
-            Block::join('=', name, Block::of(&declaration.value))
+            Block::join("=", name, Block::of(&declaration.value))
         });
 
         for (i, block) in declarations.chain([Block::of(&self.0.result)]).enumerate() {
@@ -41,7 +41,7 @@ impl Block {
             ExpressionKind::Integer(int) => Self::leaf(int.to_string()),
             ExpressionKind::Variable(name) => Self::leaf(name.to_string()),
             ExpressionKind::Binary { left, operator, right } => {
-                Self::join(char::from(*operator), Self::of(left), Self::of(right))
+                Self::join(operator.as_str(), Self::of(left), Self::of(right))
             },
         }
     }
@@ -51,11 +51,12 @@ impl Block {
         Self { root: (width - 1) / 2, rows: vec![label], width }
     }
 
-    fn join(operator: char, left: Block, right: Block) -> Self {
-        // children roots need to be at least 4 columns apart, and an even distance
-        // apart, so `/`, the operator and `\` each get their own centered column
+    fn join(operator: &str, left: Block, right: Block) -> Self {
+        // children roots need to be at least `3 + operator width` columns apart, and an
+        // even distance apart, so `/`, the operator and `\` each get their own columns
+        let minimum = (3 + operator.len()).next_multiple_of(2);
         let distance = left.width - left.root + right.root;
-        let mut gap = 4usize.saturating_sub(distance).max(1);
+        let mut gap = minimum.saturating_sub(distance).max(1);
         gap += (distance + gap) % 2;
 
         let offset = left.width + gap;
@@ -65,7 +66,8 @@ impl Block {
 
         let mut top = vec![b' '; width];
         top[left_root + 2..right_root - 1].fill(b'_');
-        top[root] = operator as u8;
+        let operator_start = root - (operator.len() - 1) / 2;
+        top[operator_start..operator_start + operator.len()].copy_from_slice(operator.as_bytes());
 
         let mut branches = vec![b' '; width];
         branches[left_root + 1] = b'/';

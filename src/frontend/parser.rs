@@ -1,5 +1,5 @@
 use crate::frontend::lexer::{
-    LexError, LexErrorKind, Lexer, Punct, Span, Spanned, Token, TokenKind,
+    Keyword, LexError, LexErrorKind, Lexer, Punct, Span, Spanned, Token, TokenKind,
 };
 
 pub struct Parser<'src> {
@@ -11,6 +11,7 @@ pub struct Parser<'src> {
 #[derive(Debug, PartialEq)]
 pub struct Program<'i> {
     pub declarations: Vec<Declaration<'i>>,
+    pub commands: Vec<Command<'i>>,
     pub result: Expression<'i>,
 }
 
@@ -22,6 +23,7 @@ pub struct Declaration<'i> {
 
 pub type Expression<'i> = Spanned<ExpressionKind<'i>>;
 pub type ParseError<'src> = Spanned<ParseErrorKind<'src>>;
+pub type Command<'i> = Spanned<CommandKind<'i>>;
 
 #[derive(Debug, PartialEq)]
 pub enum ExpressionKind<'i> {
@@ -30,12 +32,22 @@ pub enum ExpressionKind<'i> {
     Binary { left: Box<Expression<'i>>, operator: BinaryOperator, right: Box<Expression<'i>> },
 }
 
+#[derive(Debug, PartialEq)]
+pub enum CommandKind<'i> {
+    Assign { name: Spanned<&'i str>, value: Expression<'i> },
+    If { condition: Expression<'i>, then: Vec<Command<'i>>, otherwise: Vec<Command<'i>> },
+    While { condition: Expression<'i>, body: Vec<Command<'i>> },
+}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum BinaryOperator {
     Add,
     Sub,
     Mul,
     Div,
+    Lt,
+    Gt,
+    Eq,
 }
 
 #[derive(Debug, PartialEq, thiserror::Error)]
@@ -46,6 +58,8 @@ pub enum ParseErrorKind<'src> {
     Expected { found: TokenKind<'src>, expected: TokenKind<'src> },
     #[error("expected a number, identifier or '(' but found {found}")]
     ExpectedExpression { found: TokenKind<'src> },
+    #[error("expected `if`, `while` or an identifier but found {found}")]
+    ExpectedCommand { found: TokenKind<'src> },
 }
 
 pub trait Parsable<'src>: Sized {
@@ -92,6 +106,17 @@ impl<'src> Parser<'src> {
         }
     }
 
+    fn expect_keyword(&mut self, keyword: Keyword) -> Result<Span, ParseError<'src>> {
+        match self.lookahead.kind {
+            TokenKind::Keyword(found) if found == keyword => {
+                let span = self.lookahead.span;
+                self.advance()?;
+                Ok(span)
+            },
+            found => Err(self.error(ParseErrorKind::Expected { found, expected: keyword.into() })),
+        }
+    }
+
     fn expect_eof(&mut self) -> Result<(), ParseError<'src>> {
         match self.lookahead.kind {
             TokenKind::Eof => Ok(()),
@@ -116,6 +141,33 @@ impl<'src> Parser<'src> {
         }
 
         Ok(left)
+    }
+
+    /// `<ident> '=' <exp> ';'`
+    fn binding(&mut self) -> Result<(Spanned<&'src str>, Expression<'src>), ParseError<'src>> {
+        let token = self.peek();
+        let TokenKind::Ident(ident) = token.kind else {
+            unreachable!();
+        };
+        self.advance()?;
+
+        self.expect_punct(Punct::Eq)?;
+        let exp = self.parse_node()?;
+        self.expect_punct(Punct::Semicolon)?;
+
+        Ok((Spanned::new(ident, token.span), exp))
+    }
+
+    fn block(&mut self) -> Result<(Vec<Command<'src>>, Span), ParseError<'src>> {
+        self.expect_punct(Punct::OpenBrace)?;
+
+        let mut commands = Vec::new();
+        while self.peek().kind != TokenKind::Punct(Punct::CloseBrace) {
+            commands.push(self.parse_node()?);
+        }
+
+        let close = self.expect_punct(Punct::CloseBrace)?;
+        Ok((commands, close))
     }
 
     fn primary(&mut self) -> Result<Expression<'src>, ParseError<'src>> {
@@ -155,10 +207,22 @@ impl<'src> Parsable<'src> for Program<'src> {
             declarations.push(parser.parse_node()?);
         }
 
-        parser.expect_punct(Punct::Eq)?;
-        let result = parser.parse_node()?;
+        parser.expect_punct(Punct::OpenBrace)?;
 
-        Ok(Self { declarations, result })
+        let mut commands = Vec::new();
+        while !matches!(
+            parser.peek().kind,
+            TokenKind::Keyword(Keyword::Return) | TokenKind::Punct(Punct::CloseBrace)
+        ) {
+            commands.push(parser.parse_node()?);
+        }
+
+        parser.expect_keyword(Keyword::Return)?;
+        let result = parser.parse_node()?;
+        parser.expect_punct(Punct::Semicolon)?;
+        parser.expect_punct(Punct::CloseBrace)?;
+
+        Ok(Self { declarations, commands, result })
     }
 }
 
@@ -184,6 +248,41 @@ impl<'src> Parsable<'src> for Declaration<'src> {
     }
 }
 
+impl<'src> Parsable<'src> for Command<'src> {
+    fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
+        let token = parser.peek();
+
+        match token.kind {
+            TokenKind::Ident(_) => {
+                let (name, value) = parser.binding()?;
+                let span = name.span.merge(name.span);
+
+                Ok(Self::new(CommandKind::Assign { name, value }, span))
+            },
+            TokenKind::Keyword(Keyword::If) => {
+                parser.advance()?;
+                let condition = parser.parse_node()?;
+                let (then, _) = parser.block()?;
+
+                parser.expect_keyword(Keyword::Else)?;
+                let (otherwise, close) = parser.block()?;
+
+                let cmd = CommandKind::If { condition, then, otherwise };
+                Ok(Self::new(cmd, token.span.merge(close)))
+            },
+            TokenKind::Keyword(Keyword::While) => {
+                parser.advance()?;
+                let condition = parser.parse_node()?;
+                let (body, close) = parser.block()?;
+
+                let cmd = CommandKind::While { condition, body };
+                Ok(Self::new(cmd, token.span.merge(close)))
+            },
+            found => Err(parser.error(ParseErrorKind::ExpectedCommand { found })),
+        }
+    }
+}
+
 impl BinaryOperator {
     const LOWEST_PRECEDENCE: u8 = 1;
 
@@ -199,8 +298,21 @@ impl BinaryOperator {
 
     const fn precedence(self) -> u8 {
         match self {
-            Self::Add | Self::Sub => 1,
-            Self::Mul | Self::Div => 2,
+            Self::Lt | Self::Gt | Self::Eq => 1,
+            Self::Add | Self::Sub => 2,
+            Self::Mul | Self::Div => 3,
+        }
+    }
+
+    pub const fn as_str(&self) -> &str {
+        match self {
+            BinaryOperator::Eq => "==",
+            BinaryOperator::Lt => "<",
+            BinaryOperator::Gt => ">",
+            BinaryOperator::Add => "+",
+            BinaryOperator::Sub => "-",
+            BinaryOperator::Mul => "*",
+            BinaryOperator::Div => "/",
         }
     }
 }
@@ -208,17 +320,6 @@ impl BinaryOperator {
 impl<'src> From<LexError<'src>> for ParseError<'src> {
     fn from(error: LexError<'src>) -> Self {
         error.map(ParseErrorKind::Lex)
-    }
-}
-
-impl From<BinaryOperator> for char {
-    fn from(value: BinaryOperator) -> Self {
-        match value {
-            BinaryOperator::Add => '+',
-            BinaryOperator::Sub => '-',
-            BinaryOperator::Mul => '*',
-            BinaryOperator::Div => '/',
-        }
     }
 }
 

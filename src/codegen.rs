@@ -62,6 +62,9 @@ fn emit(expr: &Expression<'_>, symbols: &SymbolTable<'_>, out: &mut String) {
                 BinaryOperator::Add => inst!(out, "add %rbx, %rax"),
                 BinaryOperator::Sub => inst!(out, "sub %rbx, %rax"),
                 BinaryOperator::Mul => inst!(out, "imul %rbx, %rax"),
+                BinaryOperator::Eq => todo!("je"),
+                BinaryOperator::Gt => todo!("jq"),
+                BinaryOperator::Lt => todo!("jl"),
                 BinaryOperator::Div => {
                     inst!(out, "cqo");
                     inst!(out, "idiv %rbx")

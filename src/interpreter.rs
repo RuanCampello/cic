@@ -46,6 +46,7 @@ fn eval(expr: &Expression<'_>, env: &Environment) -> Result<i64, EvalError> {
                     return Err(Spanned::new(EvalErrorKind::DivisionByZero, right.span));
                 },
                 BinaryOperator::Div => lhs.checked_div(rhs),
+                tok => todo!("eval for {tok:#?}"),
             };
 
             result.ok_or(Spanned::new(EvalErrorKind::Overflow, expr.span))
