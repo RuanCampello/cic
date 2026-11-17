@@ -13,19 +13,20 @@ struct Block {
 
 impl std::fmt::Display for Tree<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let declarations = self.0.declarations.iter().map(|declaration| {
-            let name = Block::leaf(declaration.name.kind.to_string());
-            Block::join("=", name, Block::of(&declaration.value))
-        });
+        let declarations = self
+            .0
+            .declarations
+            .iter()
+            .map(|declaration| Block::binding(&declaration.name.kind, &declaration.value).rows);
 
-        for (i, block) in declarations.chain([Block::of(&self.0.result)]).enumerate() {
+        let result = std::iter::once(section("return", Block::of(&self.0.result).rows));
+
+        Ok(for (i, rows) in declarations.chain(result).enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
-            block.rows.iter().try_for_each(|row| writeln!(f, "{row}"))?;
-        }
-
-        Ok(())
+            rows.iter().try_for_each(|row| writeln!(f, "{row}"))?;
+        })
     }
 }
 
@@ -44,6 +45,10 @@ impl Block {
                 Self::join(operator.as_str(), Self::of(left), Self::of(right))
             },
         }
+    }
+
+    fn binding(name: &str, value: &Expression) -> Self {
+        Self::join("=", Self::leaf(name.to_string()), Self::of(value))
     }
 
     fn leaf(label: String) -> Self {
@@ -90,4 +95,13 @@ impl Block {
 
         Self { rows, width, root }
     }
+}
+
+fn section(label: &str, rows: Vec<String>) -> Vec<String> {
+    let indent = |row: String| match row.is_empty() {
+        true => row,
+        _ => format!("  {row}"),
+    };
+
+    std::iter::once(label.to_string()).chain(rows.into_iter().map(indent)).collect()
 }

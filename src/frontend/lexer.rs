@@ -49,6 +49,8 @@ pub enum Punct {
     Star,       // *
     Slash,      // /
     Eq,         // =
+    Gt,         // >
+    Lt,         // <
     EqEq,       // ==
     Semicolon,  // ;
     OpenParen,  // (
@@ -96,6 +98,8 @@ impl<'src> Lexer<'src> {
             'a'..='z' | 'A'..='Z' => return Ok(self.ident(start)),
             '=' if self.src[start + 1..].starts_with('=') => Punct::EqEq,
             '=' => Punct::Eq,
+            '>' => Punct::Gt,
+            '<' => Punct::Lt,
             ';' => Punct::Semicolon,
             '+' => Punct::Plus,
             '-' => Punct::Minus,
@@ -103,6 +107,8 @@ impl<'src> Lexer<'src> {
             '/' => Punct::Slash,
             '(' => Punct::OpenParen,
             ')' => Punct::CloseParen,
+            '{' => Punct::OpenBrace,
+            '}' => Punct::CloseBrace,
             _ => {
                 let span = Span::new(start, start + c.len_utf8());
                 return Err(Spanned::new(LexErrorKind::UnexpectedChar(c), span));
@@ -198,6 +204,8 @@ impl Punct {
         match self {
             Punct::Eq => "=",
             Punct::EqEq => "==",
+            Punct::Lt => "<",
+            Punct::Gt => ">",
             Punct::Semicolon => ";",
             Punct::Plus => "+",
             Punct::Minus => "-",
@@ -235,7 +243,7 @@ impl std::fmt::Display for Token<'_> {
             Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
             Punct(punct) => write!(f, "<{punct:?}, '{}', {position}>", punct.as_str()),
             Eof => write!(f, "<Eof, {position}>"),
-            Keyword(keyword) => write!(f, "{}", keyword.as_str()),
+            Keyword(keyword) => write!(f, "<{keyword:?}, '{}',{position}>", keyword.as_str()),
         }
     }
 }

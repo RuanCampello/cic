@@ -147,7 +147,7 @@ impl<'src> Parser<'src> {
     fn binding(&mut self) -> Result<(Spanned<&'src str>, Expression<'src>), ParseError<'src>> {
         let token = self.peek();
         let TokenKind::Ident(ident) = token.kind else {
-            unreachable!();
+            unreachable!("binding are only parsed when the lookahead is an identifier");
         };
         self.advance()?;
 
@@ -255,7 +255,7 @@ impl<'src> Parsable<'src> for Command<'src> {
         match token.kind {
             TokenKind::Ident(_) => {
                 let (name, value) = parser.binding()?;
-                let span = name.span.merge(name.span);
+                let span = name.span.merge(value.span);
 
                 Ok(Self::new(CommandKind::Assign { name, value }, span))
             },
