@@ -37,11 +37,15 @@ fn exec<'src>(commands: &[Command<'src>], env: &mut Environment<'src>) -> Result
                 let value = eval(value, env)?;
                 env.insert(name.kind, value);
             },
-            CommandKind::If { then, otherwise, .. } => {
-                exec(then, env)?;
-                exec(otherwise, env)?;
+            CommandKind::If { then, otherwise, condition } => match eval(condition, env)? {
+                0 => exec(otherwise, env)?,
+                _ => exec(then, env)?,
             },
-            CommandKind::While { body, .. } => exec(body, env)?,
+            CommandKind::While { body, condition } => {
+                while eval(condition, env)? != 0 {
+                    exec(body, env)?;
+                }
+            },
         }
     })
 }
@@ -56,6 +60,10 @@ fn eval(expr: &Expression<'_>, env: &Environment) -> Result<i64, EvalError> {
             let (lhs, rhs) = (eval(left, env)?, eval(right, env)?);
 
             let result = match operator {
+                BinaryOperator::Lt => Some(i64::from(lhs < rhs)),
+                BinaryOperator::Gt => Some(i64::from(lhs > rhs)),
+                BinaryOperator::Eq => Some(i64::from(lhs == rhs)),
+
                 BinaryOperator::Add => lhs.checked_add(rhs),
                 BinaryOperator::Sub => lhs.checked_sub(rhs),
                 BinaryOperator::Mul => lhs.checked_mul(rhs),
@@ -63,7 +71,6 @@ fn eval(expr: &Expression<'_>, env: &Environment) -> Result<i64, EvalError> {
                     return Err(Spanned::new(EvalErrorKind::DivisionByZero, right.span));
                 },
                 BinaryOperator::Div => lhs.checked_div(rhs),
-                tok => todo!("eval for {tok:#?}"),
             };
 
             result.ok_or(Spanned::new(EvalErrorKind::Overflow, expr.span))
