@@ -243,7 +243,7 @@ impl std::fmt::Display for Token<'_> {
             Integer(int) => write!(f, "<Integer, '{int}', {position}>"),
             Punct(punct) => write!(f, "<{punct:?}, '{}', {position}>", punct.as_str()),
             Eof => write!(f, "<Eof, {position}>"),
-            Keyword(keyword) => write!(f, "<{keyword:?}, '{}',{position}>", keyword.as_str()),
+            Keyword(keyword) => write!(f, "<{keyword:?}, '{}', {position}>", keyword.as_str()),
         }
     }
 }

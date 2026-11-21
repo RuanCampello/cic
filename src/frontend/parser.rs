@@ -292,6 +292,9 @@ impl BinaryOperator {
             TokenKind::Punct(Punct::Minus) => Some(Self::Sub),
             TokenKind::Punct(Punct::Star) => Some(Self::Mul),
             TokenKind::Punct(Punct::Slash) => Some(Self::Div),
+            TokenKind::Punct(Punct::Lt) => Some(Self::Lt),
+            TokenKind::Punct(Punct::Gt) => Some(Self::Gt),
+            TokenKind::Punct(Punct::EqEq) => Some(Self::Eq),
             _ => None,
         }
     }

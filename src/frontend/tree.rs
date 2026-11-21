@@ -1,6 +1,6 @@
 //! Tree printing of the AST
 
-use crate::frontend::parser::{Expression, ExpressionKind, Program};
+use crate::frontend::parser::{Command, CommandKind, Expression, ExpressionKind, Program};
 
 pub struct Tree<'p, 'i>(&'p Program<'i>);
 
@@ -19,9 +19,10 @@ impl std::fmt::Display for Tree<'_, '_> {
             .iter()
             .map(|declaration| Block::binding(&declaration.name.kind, &declaration.value).rows);
 
+        let commands = self.0.commands.iter().map(command_rows);
         let result = std::iter::once(section("return", Block::of(&self.0.result).rows));
 
-        Ok(for (i, rows) in declarations.chain(result).enumerate() {
+        Ok(for (i, rows) in declarations.chain(commands).chain(result).enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
@@ -95,6 +96,36 @@ impl Block {
 
         Self { rows, width, root }
     }
+}
+
+fn command_rows(command: &Command) -> Vec<String> {
+    match &command.kind {
+        CommandKind::Assign { name, value } => Block::binding(name.kind, value).rows,
+        CommandKind::If { condition, then, otherwise } => {
+            let mut rows = Block::of(condition).rows;
+            rows.extend(section("then", commands_rows(then)));
+            rows.extend(section("else", commands_rows(otherwise)));
+            section("if", rows)
+        },
+        CommandKind::While { condition, body } => {
+            let mut rows = Block::of(condition).rows;
+            rows.extend(section("do", commands_rows(body)));
+            section("while", rows)
+        },
+    }
+}
+
+fn commands_rows(commands: &[Command]) -> Vec<String> {
+    let mut rows = Vec::new();
+
+    for (i, command) in commands.iter().enumerate() {
+        if i > 0 {
+            rows.push(String::new());
+        }
+        rows.extend(command_rows(command));
+    }
+
+    rows
 }
 
 fn section(label: &str, rows: Vec<String>) -> Vec<String> {
