@@ -10,29 +10,42 @@ This is meant to be run only on x86-64 especially with Linux idiosyncrasies and 
 
 Group: Ruan Campello - 20240101758 (solo)
 
-LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tree.rs`) and to validate the generated assembly. Everything else was written by me.
+LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tree.rs`), to validate the generated assembly, and for help with the assembly generation of comparisons and commands (`if`/`while`) in `src/codegen.rs`. Everything else was written by me.
 
 ---
 
-The compiler implements expressions with variables with the syntax
-from the specification, no variation:
+The compiler implements the Cmd language with the syntax from the specification, no variation:
 
 ```
-<programa> ::= <decl>* '=' <exp>
-<decl>     ::= <ident> '=' <exp> ';'
-<exp>      ::= <exp_m> (('+' | '-') <exp_m>)*
+<programa> ::= <decl>* '{' <cmd>* 'return' <exp> ';' '}'
+<decl>     ::= <id> '=' <exp> ';'
+<cmd>      ::= <if> | <while> | <atrib>
+<if>       ::= 'if' <exp> '{' <cmd>* '}' 'else' '{' <cmd>* '}'
+<while>    ::= 'while' <exp> '{' <cmd>* '}'
+<atrib>    ::= <id> '=' <exp> ';'
+<exp>      ::= <exp_a> (('<' | '>' | '==') <exp_a>)*
+<exp_a>    ::= <exp_m> (('+' | '-') <exp_m>)*
 <exp_m>    ::= <prim> (('*' | '/') <prim>)*
-<prim>     ::= <num> | <ident> | '(' <exp> ')'
+<prim>     ::= <num> | <id> | '(' <exp> ')'
 ```
 
 ```
-x = (7 + 4) * 12;
-y = x * 3 + 11;
-= (x * y) + (x * 11) + (y * 13)
+n = 1;
+m = 10;
+sum = 0;
+{
+  while n < m {
+    sum = sum + n;
+    n = n + 1;
+  }
+  return sum;
+}
 ```
 
-Using a variable before its declaration is a semantic error, reported before any code
-is generated. Variables are 64-bit integers placed in the `.bss` section.
+Comparisons result in 1 (true) or 0 (false), and any value other than 0 is true in `if` and
+`while`. Using or assigning a variable that was not declared before the body is a semantic
+error, reported before any code is generated. Variables are 64-bit integers placed in the
+`.bss` section.
 
 ---
 
@@ -43,9 +56,11 @@ cargo test
 ```
 
 Unit tests cover the lexer, parser, semantic analysis and interpreter. Integration tests
-run `lex`/`parse`/`eval`/`run` on `tests/fixtures/` (a correct program, a lexical error,
-a syntax error and an undeclared variable), and compile, assemble, link and run several
-programs, with and without variables, checking the printed value.
+use the programs in `tests/fixtures/`. The spec examples (`minimal`, `delta`, `sum`,
+`remainder`, `gcd`) and `ok.ci` are run with both `eval` and `run`, checking the printed
+value. The other fixtures check the errors: a lexical error, a syntax error, an `if`
+without `else`, and undeclared variables on each side of an assignment. Several smaller
+programs with comparisons, `if` and `while` are also compiled, assembled, linked and run.
 
 To build the binary (of the compiler itself), run: 
 
@@ -58,7 +73,7 @@ To run the compiler, those are the commands you might wanna use:
 ```sh
 cargo run -- lex   [file]            # token sequence
 cargo run -- parse [file]            # syntax tree
-cargo run -- eval  [file]            # value of the expression
+cargo run -- eval  [file]            # value of the program
 cargo run -- build [file] [-o out.s] # assembly (defaults to [file].s)
 cargo run -- run   [file]            # compiles and runs natively
 ```
