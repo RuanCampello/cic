@@ -62,9 +62,9 @@ fn emit(expr: &Expression<'_>, symbols: &SymbolTable<'_>, out: &mut String) {
                 BinaryOperator::Add => inst!(out, "add %rbx, %rax"),
                 BinaryOperator::Sub => inst!(out, "sub %rbx, %rax"),
                 BinaryOperator::Mul => inst!(out, "imul %rbx, %rax"),
-                BinaryOperator::Eq => todo!(),
-                BinaryOperator::Gt => todo!(),
-                BinaryOperator::Lt => todo!(),
+                BinaryOperator::Eq => compare(out, "setz"),
+                BinaryOperator::Gt => compare(out, "setg"),
+                BinaryOperator::Lt => compare(out, "setl"),
                 BinaryOperator::Div => {
                     inst!(out, "cqo");
                     inst!(out, "idiv %rbx")
@@ -72,6 +72,15 @@ fn emit(expr: &Expression<'_>, symbols: &SymbolTable<'_>, out: &mut String) {
             }
         },
     }
+}
+
+/// rbx holds the left operand and rax the right one
+/// the set* instruction only takes 8 bits, so the flag goes through rcx :X
+fn compare(out: &mut String, set: &str) {
+    inst!(out, "xor %rcx, %rcx");
+    inst!(out, "cmp %rbx, %rax");
+    inst!(out, "{set} %cl");
+    inst!(out, "mov %rcx, %rax");
 }
 
 impl std::fmt::Display for Symbol<'_> {
