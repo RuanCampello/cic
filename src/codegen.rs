@@ -1,7 +1,7 @@
 //! Code (assembly) generator
 
 use crate::{
-    frontend::parser::{BinaryOperator, Expression, ExpressionKind, Program},
+    frontend::parser::{BinaryOperator, Command, CommandKind, Expression, ExpressionKind, Program},
     semantic::SymbolTable,
 };
 use std::fmt::Write;
@@ -40,6 +40,8 @@ pub fn generate(program: &Program<'_>, symbols: &SymbolTable<'_>) -> String {
         emit(&declaration.value, symbols, &mut code);
         inst!(code, "mov %rax, {}", Symbol(declaration.name.kind));
     }
+    let mut labels = 0;
+    emit_commands(&program.commands, symbols, &mut labels, &mut code);
     emit(&program.result, symbols, &mut code);
 
     TEMPLATE.replace(VARIABLES_MARKER, &variables).replace(CODE_MARKER, &code)
@@ -71,6 +73,47 @@ fn emit(expr: &Expression<'_>, symbols: &SymbolTable<'_>, out: &mut String) {
                 },
             }
         },
+    }
+}
+
+fn emit_commands(
+    commands: &[Command<'_>],
+    symbols: &SymbolTable<'_>,
+    labels: &mut usize,
+    out: &mut String,
+) {
+    for command in commands {
+        match &command.kind {
+            CommandKind::Assign { name, value } => {
+                emit(value, symbols, out);
+                inst!(out, "mov %rax, {}", Symbol(name.kind));
+            },
+            CommandKind::If { condition, then, otherwise } => {
+                let id = *labels;
+                *labels += 1;
+
+                emit(condition, symbols, out);
+                inst!(out, "cmp $0, %rax");
+                inst!(out, "jz Lfalso{id}");
+                emit_commands(then, symbols, labels, out);
+                inst!(out, "jmp Lfim{id}");
+                writeln!(out, "Lfalso{id}:").unwrap();
+                emit_commands(otherwise, symbols, labels, out);
+                writeln!(out, "Lfim{id}:").unwrap();
+            },
+            CommandKind::While { condition, body } => {
+                let id = *labels;
+                *labels += 1;
+
+                writeln!(out, "Linicio{id}:").unwrap();
+                emit(condition, symbols, out);
+                inst!(out, "cmp $0, %rax");
+                inst!(out, "jz Lfim{id}");
+                emit_commands(body, symbols, labels, out);
+                inst!(out, "jmp Linicio{id}");
+                writeln!(out, "Lfim{id}:").unwrap();
+            },
+        }
     }
 }
 
