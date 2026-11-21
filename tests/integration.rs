@@ -27,19 +27,37 @@ fn cic(subcommand: &str, program: &str) -> process::Output {
 #[test]
 fn compiled_programs_print_their_value() {
     let cases = [
-        ("constant", "= 333", "333"),
-        ("mul", "= (6 * 7)", "42"),
-        ("nested", "= (3 + (4 + (11 + 7)))", "25"),
-        ("spec", "= ((427 / 7) + (11 * (231 + 5)))", "2657"),
-        ("operand_order", "= (100 - (20 /3))", "94"),
-        ("negative", "= (3 - 10)", "-7"),
-        ("i64_max", "= 9223372036854775807", "9223372036854775807"),
-        ("precedence", "= 2 + 3 * 4 - 10 / 2", "9"),
-        ("left_assoc", "= 100 - 20 - 5", "75"),
-        ("perimeter", "l = 30;\nc = 40;\n= l + l + c + c", "140"),
-        ("chained", "x = 11 * 7;\ny = x * 3 + 5;\n= x * y", "18172"),
-        ("redeclared", "x = 2;\nx = x * 21;\n= x", "42"),
-        ("long_names", "Width1 = 6;\nheightZ = 7;\n= Width1 * heightZ", "42"),
+        ("constant", "{ return 333; }", "333"),
+        ("mul", "{ return (6 * 7); }", "42"),
+        ("nested", "{ return (3 + (4 + (11 + 7))); }", "25"),
+        ("spec", "{ return ((427 / 7) + (11 * (231 + 5))); }", "2657"),
+        ("operand_order", "{ return (100 - (20 /3)); }", "94"),
+        ("negative", "{ return (3 - 10); }", "-7"),
+        ("i64_max", "{ return 9223372036854775807; }", "9223372036854775807"),
+        ("precedence", "{ return 2 + 3 * 4 - 10 / 2; }", "9"),
+        ("left_assoc", "{ return 100 - 20 - 5; }", "75"),
+        ("perimeter", "l = 30;\nc = 40;\n{ return l + l + c + c; }", "140"),
+        ("chained", "x = 11 * 7;\ny = x * 3 + 5;\n{ return x * y; }", "18172"),
+        ("redeclared", "x = 2;\nx = x * 21;\n{ return x; }", "42"),
+        ("long_names", "Width1 = 6;\nheightZ = 7;\n{ return Width1 * heightZ; }", "42"),
+        ("less", "{ return 3 < 5; }", "1"),
+        ("not_less", "{ return 5 < 3; }", "0"),
+        ("greater", "{ return 5 > 3; }", "1"),
+        ("not_greater", "{ return 3 > 3; }", "0"),
+        ("equal", "{ return 4 == 4; }", "1"),
+        ("not_equal", "{ return 4 == 5; }", "0"),
+        ("negative_less", "{ return 0 - 5 < 0; }", "1"),
+        ("comparison_precedence", "{ return 1 + 2 == 9 / 3; }", "1"),
+        ("assign", "x = 1;\n{ x = x + 41; return x; }", "42"),
+        ("if_then", "x = 0;\n{ if 1 { x = 1; } else { x = 2; } return x; }", "1"),
+        ("if_else", "x = 0;\n{ if 0 { x = 1; } else { x = 2; } return x; }", "2"),
+        ("empty_arms", "x = 7;\n{ if x { } else { } return x; }", "7"),
+        ("while_skipped", "x = 3;\n{ while 0 { x = 0; } return x; }", "3"),
+        (
+            "nested_commands",
+            "i = 0;\nevens = 0;\n{ while i < 10 { if i == i / 2 * 2 { evens = evens + 1; } else { } i = i + 1; } return evens; }",
+            "5",
+        ),
     ];
 
     for (name, program, expected) in cases {
@@ -48,17 +66,23 @@ fn compiled_programs_print_their_value() {
 }
 
 #[test]
-fn run_ok_program() {
-    let output = cic("run", "ok.ci");
-    assert!(output.status.success());
-    assert_eq!(stdout(&output), ["60467"]);
-}
+fn fixtures_evaluate_and_run_to_their_value() {
+    let fixtures = [
+        ("ok.ci", "11"),
+        ("minimal.ci", "42"),
+        ("delta.ci", "8"),
+        ("sum.ci", "45"),
+        ("remainder.ci", "2"),
+        ("gcd.ci", "6"),
+    ];
 
-#[test]
-fn eval_ok_program() {
-    let output = cic("eval", "ok.ci");
-    assert!(output.status.success());
-    assert_eq!(stdout(&output), ["60467"]);
+    for (fixture, expected) in fixtures {
+        for subcommand in ["eval", "run"] {
+            let output = cic(subcommand, fixture);
+            assert!(output.status.success(), "{subcommand} {fixture}: {}", stderr(&output));
+            assert_eq!(stdout(&output), [expected], "{subcommand} {fixture}");
+        }
+    }
 }
 
 #[test]
@@ -68,41 +92,46 @@ fn lex_ok_program() {
 
     let expected = [
         "<Ident, 'x', 0>",
-        "<Equal, '=', 2>",
-        "<OpenParen, '(', 4>",
-        "<Integer, '7', 5>",
-        "<Plus, '+', 7>",
-        "<Integer, '4', 9>",
-        "<CloseParen, ')', 10>",
-        "<Star, '*', 12>",
-        "<Integer, '12', 14>",
-        "<Semicolon, ';', 16>",
-        "<Ident, 'y', 18>",
-        "<Equal, '=', 20>",
-        "<Ident, 'x', 22>",
-        "<Star, '*', 24>",
-        "<Integer, '3', 26>",
-        "<Plus, '+', 28>",
-        "<Integer, '11', 30>",
+        "<Eq, '=', 2>",
+        "<Integer, '5', 4>",
+        "<Semicolon, ';', 5>",
+        "<OpenBrace, '{', 7>",
+        "<If, 'if', 11>",
+        "<Ident, 'x', 14>",
+        "<EqEq, '==', 16>",
+        "<Integer, '5', 19>",
+        "<OpenBrace, '{', 21>",
+        "<Ident, 'x', 27>",
+        "<Eq, '=', 29>",
+        "<Integer, '1', 31>",
         "<Semicolon, ';', 32>",
-        "<Equal, '=', 34>",
-        "<OpenParen, '(', 36>",
-        "<Ident, 'x', 37>",
-        "<Star, '*', 39>",
-        "<Ident, 'y', 41>",
-        "<CloseParen, ')', 42>",
-        "<Plus, '+', 44>",
-        "<OpenParen, '(', 46>",
-        "<Ident, 'x', 47>",
-        "<Star, '*', 49>",
-        "<Integer, '11', 51>",
-        "<CloseParen, ')', 53>",
-        "<Plus, '+', 55>",
-        "<OpenParen, '(', 57>",
-        "<Ident, 'y', 58>",
-        "<Star, '*', 60>",
-        "<Integer, '13', 62>",
-        "<CloseParen, ')', 64>",
+        "<CloseBrace, '}', 36>",
+        "<Else, 'else', 38>",
+        "<OpenBrace, '{', 43>",
+        "<CloseBrace, '}', 47>",
+        "<If, 'if', 51>",
+        "<Ident, 'x', 54>",
+        "<EqEq, '==', 56>",
+        "<Integer, '0', 59>",
+        "<OpenBrace, '{', 61>",
+        "<Ident, 'x', 67>",
+        "<Eq, '=', 69>",
+        "<Integer, '9', 71>",
+        "<Semicolon, ';', 72>",
+        "<CloseBrace, '}', 76>",
+        "<Else, 'else', 78>",
+        "<OpenBrace, '{', 83>",
+        "<Ident, 'x', 89>",
+        "<Eq, '=', 91>",
+        "<Ident, 'x', 93>",
+        "<Plus, '+', 95>",
+        "<Integer, '10', 97>",
+        "<Semicolon, ';', 99>",
+        "<CloseBrace, '}', 103>",
+        "<Return, 'return', 107>",
+        "<Ident, 'x', 114>",
+        "<Semicolon, ';', 115>",
+        "<CloseBrace, '}', 117>",
     ];
 
     assert_eq!(stdout(&output), expected);
@@ -114,29 +143,37 @@ fn parse_ok_program() {
     assert!(output.status.success());
 
     let expected = [
-        r"  _=_",
-        r" /   \",
-        r"x     *",
-        r"     / \",
-        r"    +   12",
-        r"   / \",
-        r"  7   4",
+        r"  =",
+        r" / \",
+        r"x   5",
         r"",
-        r"  _=_",
-        r" /   \",
-        r"y     +",
+        r"if",
+        r"    _==",
+        r"   /   \",
+        r"  x     5",
+        r"  then",
+        r"      =",
         r"     / \",
-        r"    *   11",
-        r"   / \",
-        r"  x   3",
+        r"    x   1",
+        r"  else",
         r"",
-        r"       ___+___",
-        r"      /       \",
-        r"    _+_        *",
-        r"   /   \      / \",
-        r"  *     *    y   13",
-        r" / \   / \",
-        r"x   y x   11",
+        r"if",
+        r"    _==",
+        r"   /   \",
+        r"  x     0",
+        r"  then",
+        r"      =",
+        r"     / \",
+        r"    x   9",
+        r"  else",
+        r"      =",
+        r"     / \",
+        r"    x   +",
+        r"       / \",
+        r"      x   10",
+        r"",
+        r"return",
+        r"  x",
     ];
     assert_eq!(stdout(&output), expected)
 }
@@ -157,16 +194,33 @@ fn syntax_error_fails() {
 
 #[test]
 fn undeclared_variable_fails() {
-    for subcommand in ["eval", "run", "build"] {
-        let output = cic(subcommand, "undeclared.ci");
-        assert!(!output.status.success(), "{subcommand}");
-        assert_eq!(stderr(&output), "semantic error at 8: use of undeclared variable `y`\n");
+    let cases = [
+        ("undeclared.ci", "semantic error at 11: use of undeclared variable `y`\n"),
+        ("undeclared_rhs.ci", "semantic error at 15: use of undeclared variable `y`\n"),
+    ];
+
+    for (fixture, expected) in cases {
+        for subcommand in ["eval", "run", "build"] {
+            let output = cic(subcommand, fixture);
+            assert!(!output.status.success(), "{subcommand} {fixture}");
+            assert_eq!(stderr(&output), expected, "{subcommand} {fixture}");
+        }
     }
 }
 
 #[test]
+fn if_without_else_fails() {
+    let output = cic("parse", "missing_else.ci");
+    assert!(!output.status.success());
+    assert_eq!(
+        stderr(&output),
+        "parsing error at 29: expected keyword `else` but found keyword `return`\n"
+    );
+}
+
+#[test]
 fn generated_assembly_declares_variables_in_bss() {
-    let program = parser::parse("x = 11 * 7;\ny = x * 3 + 5;\n= x * y").unwrap();
+    let program = parser::parse("x = 11 * 7;\ny = x * 3 + 5;\n{ return x * y; }").unwrap();
     let symbols = semantic::analyse(&program).unwrap();
     let asm = codegen::generate(&program, &symbols);
 

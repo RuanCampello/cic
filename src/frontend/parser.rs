@@ -344,15 +344,15 @@ mod tests {
 
     #[test]
     fn specification_example_structure() {
-        let expr = result("= (33 + (912 * 11))");
-        assert_eq!(expr.span, Span::new(2, 19));
+        let expr = result("{ return (33 + (912 * 11)); }");
+        assert_eq!(expr.span, Span::new(9, 26));
 
         let ExpressionKind::Binary { right, left, operator } = &expr.kind else {
             panic!("expected a binary expression");
         };
         assert_eq!(*operator, BinaryOperator::Add);
         assert_eq!(left.kind, ExpressionKind::Integer(33));
-        assert_eq!(right.span, Span::new(8, 18));
+        assert_eq!(right.span, Span::new(15, 25));
 
         let ExpressionKind::Binary { operator, left, right } = &right.kind else {
             panic!("expected a binary expression");
@@ -364,60 +364,60 @@ mod tests {
 
     #[test]
     fn unclosed_paren_is_rejected() {
-        let error = parse("= (1 + 2").unwrap_err();
+        let error = parse("{ return (1 + 2").unwrap_err();
         let expected =
             ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::CloseParen.into() };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(8, 8));
+        assert_eq!(error.span, Span::new(15, 15));
     }
 
     #[test]
     fn missing_operator_is_rejected() {
-        let error = parse("= (1 2)").unwrap_err();
+        let error = parse("{ return (1 2); }").unwrap_err();
         let expected = ParseErrorKind::Expected {
             found: TokenKind::Integer(2),
             expected: Punct::CloseParen.into(),
         };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(5, 6));
+        assert_eq!(error.span, Span::new(12, 13));
     }
 
     #[test]
     fn trailing_tokens_are_rejected() {
-        let error = parse("= 1 2").unwrap_err();
+        let error = parse("{ return 1; } 2").unwrap_err();
         let expected =
             ParseErrorKind::Expected { found: TokenKind::Integer(2), expected: TokenKind::Eof };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(4, 5));
+        assert_eq!(error.span, Span::new(14, 15));
     }
 
     #[test]
     fn empty_parens_are_rejected() {
-        let error = parse("= ()").unwrap_err();
+        let error = parse("{ return (); }").unwrap_err();
         let expected = ParseErrorKind::ExpectedExpression { found: Punct::CloseParen.into() };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(3, 4));
+        assert_eq!(error.span, Span::new(10, 11));
     }
 
     #[test]
     fn empty_input_is_rejected() {
         let error = parse("").unwrap_err();
         let expected =
-            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::Eq.into() };
+            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::OpenBrace.into() };
         assert_eq!(error.kind, expected);
         assert_eq!(error.span, Span::new(0, 0));
     }
 
     #[test]
     fn lexical_error_surfaces_through_parser() {
-        let error = parse("= (1 + $)").unwrap_err();
+        let error = parse("{ return (1 + $); }").unwrap_err();
         assert_eq!(error.kind, ParseErrorKind::Lex(LexErrorKind::UnexpectedChar('$')));
-        assert_eq!(error.span, Span::new(7, 8));
+        assert_eq!(error.span, Span::new(14, 15));
     }
 
     #[test]
     fn declarations_and_variables_are_parsed() {
-        let program = parse("x = 7 * 8;\ny = x - 1;\n= x * y").unwrap();
+        let program = parse("x = 7 * 8;\ny = x - 1;\n{ return x * y; }").unwrap();
         let names: Vec<_> = program.declarations.iter().map(|decl| decl.name.kind).collect();
         assert_eq!(names, ["x", "y"]);
 
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn precedence_and_left_associativity() {
-        let program = parse("= 10 - 2 - 3 * 2").unwrap();
+        let program = parse("{ return 10 - 2 - 3 * 2; }").unwrap();
         let ExpressionKind::Binary { left, operator: BinaryOperator::Sub, right } =
             &program.result.kind
         else {

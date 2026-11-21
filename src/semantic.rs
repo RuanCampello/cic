@@ -103,25 +103,28 @@ mod tests {
 
     #[test]
     fn declared_variables_are_accepted() {
-        assert_eq!(analyse_src("x = 7 * 8;\ny = x * 11 - 17;\n= x * y + 33"), Ok(vec!["x", "y"]));
+        assert_eq!(
+            analyse_src("x = 7 * 8;\ny = x * 11 - 17;\n{ return x * y + 33; }"),
+            Ok(vec!["x", "y"])
+        );
     }
 
     #[test]
     fn use_before_declaration_is_rejected() {
-        let error = analyse_src("x = 7 + y;\ny = x * 11;\n= x * y + z").unwrap_err();
+        let error = analyse_src("x = 7 + y;\ny = x * 11;\n{ return x * y + z; }").unwrap_err();
         assert_eq!(error.kind, SemanticErrorKind::UndeclaredVariable("y"));
         assert_eq!(error.span, Span::new(8, 9));
     }
 
     #[test]
     fn undeclared_variable_in_result_is_rejected() {
-        let error = analyse_src("x = 1;\n= x + z").unwrap_err();
+        let error = analyse_src("x = 1;\n{ return x + z; }").unwrap_err();
         assert_eq!(error.kind, SemanticErrorKind::UndeclaredVariable("z"));
     }
 
     #[test]
     fn self_reference_is_rejected() {
-        let error = analyse_src("x = x + 1;\n= x").unwrap_err();
+        let error = analyse_src("x = x + 1;\n{ return x; }").unwrap_err();
         assert_eq!(error.kind, SemanticErrorKind::UndeclaredVariable("x"));
     }
 }

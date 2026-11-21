@@ -1,2 +1,4 @@
 x = 237axy;
-= x
+{
+  return x;
+}

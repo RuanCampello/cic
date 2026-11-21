@@ -1,0 +1,10 @@
+n = 1;
+m = 10;
+sum = 0;
+{
+  while n < m {
+    sum = sum + n;
+    n = n + 1;
+  }
+  return sum;
+}

@@ -98,6 +98,6 @@ mod tests {
 
     #[test]
     fn evaluate_example() {
-        assert_eq!(run("= ((427 / 7) + (11 * (231 + 5)))"), Ok(2657))
+        assert_eq!(run("{ return ((427 / 7) + (11 * (231 + 5))); }"), Ok(2657))
     }
 }
