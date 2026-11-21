@@ -115,7 +115,7 @@ impl<'src> Lexer<'src> {
             },
         };
 
-        self.position += 1;
+        self.position += punct.as_str().len();
         Ok(Spanned::new(TokenKind::Punct(punct), Span::new(start, self.position)))
     }
 
