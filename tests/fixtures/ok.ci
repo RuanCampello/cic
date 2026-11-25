@@ -1,5 +1,5 @@
-x = 5;
-{
+var x = 5;
+main {
   if x == 5 {
     x = 1;
   } else {

@@ -1,0 +1,7 @@
+fun add(x, y) {
+  return x + y;
+}
+
+main {
+  return add(1);
+}

@@ -1,4 +1,4 @@
-x = 237axy;
-{
+var x = 237axy;
+main {
   return x;
 }

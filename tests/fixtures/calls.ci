@@ -1,0 +1,22 @@
+var x = 100;
+var calls = 0;
+
+fun answer() {
+  calls = calls + 1;
+  return 42;
+}
+
+fun square(x) {
+  return x * x;
+}
+
+fun poly(x, y) {
+  var a = square(x);
+  var b = square(y);
+  return a + b + answer();
+}
+
+main {
+  x = poly(3, 4) + x;
+  return x + calls;
+}

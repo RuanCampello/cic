@@ -1,0 +1,21 @@
+var a = 1;
+var b = 2;
+var c = 3;
+
+fun abs(x) {
+  var y = 0;
+  if x < 0 {
+    y = 0 - x;
+  } else {
+    y = x;
+  }
+  return y;
+}
+
+fun delta(a, b, c) {
+  return abs(b * b - 4 * a * c);
+}
+
+main {
+  return delta(a, b, c);
+}

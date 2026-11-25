@@ -1,0 +1,11 @@
+fun f(x) {
+  return g(x);
+}
+
+fun g(x) {
+  return x;
+}
+
+main {
+  return f(1);
+}

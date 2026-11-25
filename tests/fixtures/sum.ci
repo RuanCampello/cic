@@ -1,7 +1,7 @@
-n = 1;
-m = 10;
-sum = 0;
-{
+var n = 1;
+var m = 10;
+var sum = 0;
+main {
   while n < m {
     sum = sum + n;
     n = n + 1;

@@ -1,7 +1,7 @@
-a = 18;
-b = 12;
-r = 0;
-{
+var a = 18;
+var b = 12;
+var r = 0;
+main {
   r = a;
   while r+1 > b {
     r = r - b;
