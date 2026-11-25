@@ -1,6 +1,8 @@
 //! Tree printing of the AST
 
-use crate::frontend::parser::{Command, CommandKind, Expression, ExpressionKind, Program};
+use crate::frontend::parser::{
+    Body, Command, CommandKind, Expression, ExpressionKind, Function, Item, Program,
+};
 
 pub struct Tree<'p, 'i>(&'p Program<'i>);
 
@@ -13,16 +15,13 @@ struct Block {
 
 impl std::fmt::Display for Tree<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let declarations = self
-            .0
-            .declarations
-            .iter()
-            .map(|declaration| Block::binding(&declaration.name.kind, &declaration.value).rows);
+        let items = self.0.items.iter().map(|item| match item {
+            Item::Var(var) => Block::binding(var.name.kind, &var.value).rows,
+            Item::Fn(function) => function_rows(function),
+        });
+        let main = std::iter::once(section("main", body_rows(Vec::new(), &self.0.main)));
 
-        let commands = self.0.commands.iter().map(command_rows);
-        let result = std::iter::once(section("return", Block::of(&self.0.result).rows));
-
-        Ok(for (i, rows) in declarations.chain(commands).chain(result).enumerate() {
+        Ok(for (i, rows) in items.chain(main).enumerate() {
             if i > 0 {
                 writeln!(f)?;
             }
@@ -45,7 +44,72 @@ impl Block {
             ExpressionKind::Binary { left, operator, right } => {
                 Self::join(operator.as_str(), Self::of(left), Self::of(right))
             },
+            ExpressionKind::Call { name, args } => {
+                Self::call(&format!("{}()", name.kind), args.iter().map(Self::of).collect())
+            },
         }
+    }
+
+    /// a node with any number of children side by side, `|` marks the one right below it
+    fn call(label: &str, children: Vec<Block>) -> Self {
+        if children.is_empty() {
+            return Self::leaf(label.to_string());
+        }
+
+        let mut offsets = Vec::with_capacity(children.len());
+        let mut width = 0;
+        for child in &children {
+            offsets.push(width);
+            width += child.width + 2;
+        }
+        width -= 2;
+
+        let roots: Vec<_> =
+            children.iter().zip(&offsets).map(|(child, at)| at + child.root).collect();
+        let (first, last) = (roots[0], roots[roots.len() - 1]);
+        let half = (label.len() - 1) / 2;
+        let shift = half.saturating_sub((first + last) / 2);
+        let root = (first + last) / 2 + shift;
+        let width = (width + shift).max(root - half + label.len());
+
+        let mut branches = vec![b' '; width];
+        for &child_root in &roots {
+            let child_root = child_root + shift;
+            match child_root.cmp(&root) {
+                std::cmp::Ordering::Less => branches[child_root + 1] = b'/',
+                std::cmp::Ordering::Greater => branches[child_root - 1] = b'\\',
+                std::cmp::Ordering::Equal => branches[child_root] = b'|',
+            }
+        }
+
+        let mut top = vec![b' '; width];
+        let ends = branches.iter().enumerate().filter(|(_, b)| **b != b' ').map(|(i, _)| i);
+        let (left, right) = (ends.clone().min().unwrap_or(root), ends.max().unwrap_or(root));
+        if left + 1 < right {
+            top[left + 1..right].fill(b'_');
+        }
+        top[root - half..root - half + label.len()].copy_from_slice(label.as_bytes());
+
+        let mut rows: Vec<_> = [top, branches]
+            .into_iter()
+            .map(|row| String::from_utf8(row).expect("tree rows to be ascii"))
+            .collect();
+
+        let height = children.iter().map(|child| child.rows.len()).max().unwrap_or(0);
+        for i in 0..height {
+            let mut row = " ".repeat(shift);
+            for (child, at) in children.iter().zip(&offsets) {
+                let cell = child.rows.get(i).map_or("", String::as_str);
+                row = format!("{row:<width$}{cell}", width = shift + at);
+            }
+            rows.push(row);
+        }
+
+        for row in &mut rows {
+            row.truncate(row.trim_end().len());
+        }
+
+        Self { rows, width, root }
     }
 
     fn binding(name: &str, value: &Expression) -> Self {
@@ -113,6 +177,32 @@ fn command_rows(command: &Command) -> Vec<String> {
             section("while", rows)
         },
     }
+}
+
+fn function_rows(function: &Function) -> Vec<String> {
+    let params: Vec<_> = function.params.iter().map(|param| param.kind).collect();
+    let header = format!("fun {}({})", function.name.kind, params.join(", "));
+    let locals: Vec<_> = function
+        .locals
+        .iter()
+        .map(|var| Block::binding(var.name.kind, &var.value).rows)
+        .collect();
+
+    section(&header, body_rows(locals, &function.body))
+}
+
+fn body_rows(locals: Vec<Vec<String>>, body: &Body) -> Vec<String> {
+    let commands = body.commands.iter().map(command_rows);
+    let result = std::iter::once(section("return", Block::of(&body.result).rows));
+
+    let mut rows = Vec::new();
+    for (i, block) in locals.into_iter().chain(commands).chain(result).enumerate() {
+        if i > 0 {
+            rows.push(String::new());
+        }
+        rows.extend(block);
+    }
+    rows
 }
 
 fn commands_rows(commands: &[Command]) -> Vec<String> {

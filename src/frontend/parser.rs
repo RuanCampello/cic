@@ -10,15 +10,30 @@ pub struct Parser<'src> {
 
 #[derive(Debug, PartialEq)]
 pub struct Program<'i> {
-    pub declarations: Vec<Declaration<'i>>,
-    pub commands: Vec<Command<'i>>,
-    pub result: Expression<'i>,
+    pub items: Vec<Item<'i>>,
+    pub main: Body<'i>,
+}
+
+/// `'var' <id> '=' <exp> ';'`
+#[derive(Debug, PartialEq)]
+pub struct Var<'i> {
+    pub name: Spanned<&'i str>,
+    pub value: Expression<'i>,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Declaration<'i> {
+pub struct Function<'i> {
     pub name: Spanned<&'i str>,
-    pub value: Expression<'i>,
+    pub params: Vec<Spanned<&'i str>>,
+    pub locals: Vec<Var<'i>>,
+    pub body: Body<'i>,
+}
+
+/// `<cmd>* 'return' <exp> ';'` shared by `main` and every function
+#[derive(Debug, PartialEq)]
+pub struct Body<'i> {
+    pub commands: Vec<Command<'i>>,
+    pub result: Expression<'i>,
 }
 
 pub type Expression<'i> = Spanned<ExpressionKind<'i>>;
@@ -26,10 +41,17 @@ pub type ParseError<'src> = Spanned<ParseErrorKind<'src>>;
 pub type Command<'i> = Spanned<CommandKind<'i>>;
 
 #[derive(Debug, PartialEq)]
+pub enum Item<'i> {
+    Var(Var<'i>),
+    Fn(Function<'i>),
+}
+
+#[derive(Debug, PartialEq)]
 pub enum ExpressionKind<'i> {
     Variable(&'i str),
     Integer(i64),
     Binary { left: Box<Expression<'i>>, operator: BinaryOperator, right: Box<Expression<'i>> },
+    Call { name: Spanned<&'i str>, args: Vec<Expression<'i>> },
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,6 +82,8 @@ pub enum ParseErrorKind<'src> {
     ExpectedExpression { found: TokenKind<'src> },
     #[error("expected `if`, `while` or an identifier but found {found}")]
     ExpectedCommand { found: TokenKind<'src> },
+    #[error("expected an identifier but found {found}")]
+    ExpectedIdentifier { found: TokenKind<'src> },
 }
 
 pub trait Parsable<'src>: Sized {
@@ -145,17 +169,60 @@ impl<'src> Parser<'src> {
 
     /// `<ident> '=' <exp> ';'`
     fn binding(&mut self) -> Result<(Spanned<&'src str>, Expression<'src>), ParseError<'src>> {
-        let token = self.peek();
-        let TokenKind::Ident(ident) = token.kind else {
-            unreachable!("binding are only parsed when the lookahead is an identifier");
-        };
-        self.advance()?;
-
+        let name = self.expect_ident()?;
         self.expect_punct(Punct::Eq)?;
         let exp = self.parse_node()?;
         self.expect_punct(Punct::Semicolon)?;
 
-        Ok((Spanned::new(ident, token.span), exp))
+        Ok((name, exp))
+    }
+
+    fn expect_ident(&mut self) -> Result<Spanned<&'src str>, ParseError<'src>> {
+        let token = self.peek();
+        match token.kind {
+            TokenKind::Ident(ident) => {
+                self.advance()?;
+                Ok(Spanned::new(ident, token.span))
+            },
+            found => Err(self.error(ParseErrorKind::ExpectedIdentifier { found })),
+        }
+    }
+
+    /// parses `<item> (',' <item>)*` up to the closing `)`, which is consumed
+    fn list<T>(
+        &mut self,
+        mut item: impl FnMut(&mut Self) -> Result<T, ParseError<'src>>,
+    ) -> Result<(Vec<T>, Span), ParseError<'src>> {
+        let mut items = Vec::new();
+
+        if self.peek().kind != TokenKind::Punct(Punct::CloseParen) {
+            items.push(item(self)?);
+            while self.peek().kind == TokenKind::Punct(Punct::Comma) {
+                self.advance()?;
+                items.push(item(self)?);
+            }
+        }
+
+        let close = self.expect_punct(Punct::CloseParen)?;
+        Ok((items, close))
+    }
+
+    /// `<cmd>* 'return' <exp> ';' '}'`, the opening brace was already consumed
+    fn body(&mut self) -> Result<Body<'src>, ParseError<'src>> {
+        let mut commands = Vec::new();
+        while !matches!(
+            self.peek().kind,
+            TokenKind::Keyword(Keyword::Return) | TokenKind::Punct(Punct::CloseBrace)
+        ) {
+            commands.push(self.parse_node()?);
+        }
+
+        self.expect_keyword(Keyword::Return)?;
+        let result = self.parse_node()?;
+        self.expect_punct(Punct::Semicolon)?;
+        self.expect_punct(Punct::CloseBrace)?;
+
+        Ok(Body { commands, result })
     }
 
     fn block(&mut self) -> Result<(Vec<Command<'src>>, Span), ParseError<'src>> {
@@ -180,7 +247,14 @@ impl<'src> Parser<'src> {
             },
             TokenKind::Ident(ident) => {
                 self.advance()?;
-                Ok(Spanned::new(ExpressionKind::Variable(ident), token.span))
+                if self.peek().kind != TokenKind::Punct(Punct::OpenParen) {
+                    return Ok(Spanned::new(ExpressionKind::Variable(ident), token.span));
+                }
+
+                self.advance()?;
+                let (args, close) = self.list(Self::parse_node)?;
+                let name = Spanned::new(ident, token.span);
+                Ok(Spanned::new(ExpressionKind::Call { name, args }, token.span.merge(close)))
             },
             TokenKind::Punct(Punct::OpenParen) => {
                 self.advance()?;
@@ -201,28 +275,21 @@ impl<'src> Parser<'src> {
 
 impl<'src> Parsable<'src> for Program<'src> {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
-        let mut declarations = Vec::new();
+        let mut items = Vec::new();
 
-        while let TokenKind::Ident(_) = parser.peek().kind {
-            declarations.push(parser.parse_node()?);
+        loop {
+            match parser.peek().kind {
+                TokenKind::Keyword(Keyword::Var) => items.push(Item::Var(parser.parse_node()?)),
+                TokenKind::Keyword(Keyword::Fun) => items.push(Item::Fn(parser.parse_node()?)),
+                _ => break,
+            }
         }
 
+        parser.expect_keyword(Keyword::Main)?;
         parser.expect_punct(Punct::OpenBrace)?;
+        let main = parser.body()?;
 
-        let mut commands = Vec::new();
-        while !matches!(
-            parser.peek().kind,
-            TokenKind::Keyword(Keyword::Return) | TokenKind::Punct(Punct::CloseBrace)
-        ) {
-            commands.push(parser.parse_node()?);
-        }
-
-        parser.expect_keyword(Keyword::Return)?;
-        let result = parser.parse_node()?;
-        parser.expect_punct(Punct::Semicolon)?;
-        parser.expect_punct(Punct::CloseBrace)?;
-
-        Ok(Self { declarations, commands, result })
+        Ok(Self { items, main })
     }
 }
 
@@ -232,19 +299,30 @@ impl<'src> Parsable<'src> for Expression<'src> {
     }
 }
 
-impl<'src> Parsable<'src> for Declaration<'src> {
+impl<'src> Parsable<'src> for Var<'src> {
     fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
-        let token = parser.peek();
-        let TokenKind::Ident(ident) = token.kind else {
-            unreachable!("declarations are only parsed when the lookahead is an identifier")
-        };
-        parser.advance()?;
+        parser.expect_keyword(Keyword::Var)?;
+        let (name, value) = parser.binding()?;
+        Ok(Self { name, value })
+    }
+}
 
-        parser.expect_punct(Punct::Eq)?;
-        let value = parser.parse_node()?;
-        parser.expect_punct(Punct::Semicolon)?;
+impl<'src> Parsable<'src> for Function<'src> {
+    fn parse(parser: &mut Parser<'src>) -> Result<Self, ParseError<'src>> {
+        parser.expect_keyword(Keyword::Fun)?;
+        let name = parser.expect_ident()?;
 
-        Ok(Self { name: Spanned::new(ident, token.span), value })
+        parser.expect_punct(Punct::OpenParen)?;
+        let (params, _) = parser.list(Parser::expect_ident)?;
+
+        parser.expect_punct(Punct::OpenBrace)?;
+        let mut locals = Vec::new();
+        while parser.peek().kind == TokenKind::Keyword(Keyword::Var) {
+            locals.push(parser.parse_node()?);
+        }
+        let body = parser.body()?;
+
+        Ok(Self { name, params, locals, body })
     }
 }
 
@@ -338,21 +416,21 @@ mod tests {
 
     fn result(src: &str) -> Expression<'_> {
         let program = parse(src).unwrap();
-        assert!(program.declarations.is_empty());
-        program.result
+        assert!(program.items.is_empty());
+        program.main.result
     }
 
     #[test]
     fn specification_example_structure() {
-        let expr = result("{ return (33 + (912 * 11)); }");
-        assert_eq!(expr.span, Span::new(9, 26));
+        let expr = result("main { return (33 + (912 * 11)); }");
+        assert_eq!(expr.span, Span::new(14, 31));
 
         let ExpressionKind::Binary { right, left, operator } = &expr.kind else {
             panic!("expected a binary expression");
         };
         assert_eq!(*operator, BinaryOperator::Add);
         assert_eq!(left.kind, ExpressionKind::Integer(33));
-        assert_eq!(right.span, Span::new(15, 25));
+        assert_eq!(right.span, Span::new(20, 30));
 
         let ExpressionKind::Binary { operator, left, right } = &right.kind else {
             panic!("expected a binary expression");
@@ -364,64 +442,71 @@ mod tests {
 
     #[test]
     fn unclosed_paren_is_rejected() {
-        let error = parse("{ return (1 + 2").unwrap_err();
+        let error = parse("main { return (1 + 2").unwrap_err();
         let expected =
             ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::CloseParen.into() };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(15, 15));
+        assert_eq!(error.span, Span::new(20, 20));
     }
 
     #[test]
     fn missing_operator_is_rejected() {
-        let error = parse("{ return (1 2); }").unwrap_err();
+        let error = parse("main { return (1 2); }").unwrap_err();
         let expected = ParseErrorKind::Expected {
             found: TokenKind::Integer(2),
             expected: Punct::CloseParen.into(),
         };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(12, 13));
+        assert_eq!(error.span, Span::new(17, 18));
     }
 
     #[test]
     fn trailing_tokens_are_rejected() {
-        let error = parse("{ return 1; } 2").unwrap_err();
+        let error = parse("main { return 1; } 2").unwrap_err();
         let expected =
             ParseErrorKind::Expected { found: TokenKind::Integer(2), expected: TokenKind::Eof };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(14, 15));
+        assert_eq!(error.span, Span::new(19, 20));
     }
 
     #[test]
     fn empty_parens_are_rejected() {
-        let error = parse("{ return (); }").unwrap_err();
+        let error = parse("main { return (); }").unwrap_err();
         let expected = ParseErrorKind::ExpectedExpression { found: Punct::CloseParen.into() };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(10, 11));
+        assert_eq!(error.span, Span::new(15, 16));
     }
 
     #[test]
     fn empty_input_is_rejected() {
         let error = parse("").unwrap_err();
         let expected =
-            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Punct::OpenBrace.into() };
+            ParseErrorKind::Expected { found: TokenKind::Eof, expected: Keyword::Main.into() };
         assert_eq!(error.kind, expected);
         assert_eq!(error.span, Span::new(0, 0));
     }
 
     #[test]
     fn lexical_error_surfaces_through_parser() {
-        let error = parse("{ return (1 + $); }").unwrap_err();
+        let error = parse("main { return (1 + $); }").unwrap_err();
         assert_eq!(error.kind, ParseErrorKind::Lex(LexErrorKind::UnexpectedChar('$')));
-        assert_eq!(error.span, Span::new(14, 15));
+        assert_eq!(error.span, Span::new(19, 20));
     }
 
     #[test]
     fn declarations_and_variables_are_parsed() {
-        let program = parse("x = 7 * 8;\ny = x - 1;\n{ return x * y; }").unwrap();
-        let names: Vec<_> = program.declarations.iter().map(|decl| decl.name.kind).collect();
+        let program = parse("var x = 7 * 8;\nvar y = x - 1;\nmain { return x * y; }").unwrap();
+        let names: Vec<_> = program
+            .items
+            .iter()
+            .map(|item| match item {
+                Item::Var(var) => var.name.kind,
+                Item::Fn(_) => panic!("expected only variables"),
+            })
+            .collect();
         assert_eq!(names, ["x", "y"]);
 
-        let ExpressionKind::Binary { left, operator, right } = &program.result.kind else {
+        let ExpressionKind::Binary { left, operator, right } = &program.main.result.kind else {
             panic!("expected a binary expression");
         };
         assert_eq!(*operator, BinaryOperator::Mul);
@@ -431,9 +516,9 @@ mod tests {
 
     #[test]
     fn precedence_and_left_associativity() {
-        let program = parse("{ return 10 - 2 - 3 * 2; }").unwrap();
+        let program = parse("main { return 10 - 2 - 3 * 2; }").unwrap();
         let ExpressionKind::Binary { left, operator: BinaryOperator::Sub, right } =
-            &program.result.kind
+            &program.main.result.kind
         else {
             panic!("expected a subtraction at the root");
         };
@@ -449,10 +534,48 @@ mod tests {
 
     #[test]
     fn declaration_without_semicolon_is_rejected() {
-        let error = parse("x = 1\n= x").unwrap_err();
+        let error = parse("var x = 1\n= x").unwrap_err();
         let expected =
             ParseErrorKind::Expected { found: Punct::Eq.into(), expected: Punct::Semicolon.into() };
         assert_eq!(error.kind, expected);
-        assert_eq!(error.span, Span::new(6, 7));
+        assert_eq!(error.span, Span::new(10, 11));
+    }
+
+    #[test]
+    fn functions_and_calls_are_parsed() {
+        let program =
+            parse("fun f(x, y) { var z = x; return g(z, 1) + h(); }\nmain { return 0; }").unwrap();
+        let [Item::Fn(function)] = program.items.as_slice() else {
+            panic!("expected a single function");
+        };
+
+        assert_eq!(function.name.kind, "f");
+        assert_eq!(function.params.iter().map(|param| param.kind).collect::<Vec<_>>(), ["x", "y"]);
+        assert_eq!(function.locals.len(), 1);
+
+        let ExpressionKind::Binary { left, right, .. } = &function.body.result.kind else {
+            panic!("expected a binary expression");
+        };
+        let ExpressionKind::Call { name, args } = &left.kind else {
+            panic!("expected a call")
+        };
+        assert_eq!(name.kind, "g");
+        assert_eq!(args[0].kind, ExpressionKind::Variable("z"));
+        assert_eq!(args[1].kind, ExpressionKind::Integer(1));
+        assert!(matches!(&right.kind, ExpressionKind::Call { args, .. } if args.is_empty()));
+    }
+
+    #[test]
+    fn trailing_comma_is_rejected() {
+        let error = parse("fun f(x,) { return x; }\nmain { return 0; }").unwrap_err();
+        let expected = ParseErrorKind::ExpectedIdentifier { found: Punct::CloseParen.into() };
+        assert_eq!(error.kind, expected);
+    }
+
+    #[test]
+    fn var_inside_main_is_rejected() {
+        let error = parse("main { var x = 1; return x; }").unwrap_err();
+        let expected = ParseErrorKind::ExpectedCommand { found: Keyword::Var.into() };
+        assert_eq!(error.kind, expected);
     }
 }
