@@ -53,6 +53,7 @@ pub enum Punct {
     Lt,         // <
     EqEq,       // ==
     Semicolon,  // ;
+    Comma,      // ,
     OpenParen,  // (
     CloseParen, // )
     OpenBrace,  // {
@@ -65,6 +66,9 @@ pub enum Keyword {
     Else,
     While,
     Return,
+    Fun,
+    Var,
+    Main,
 }
 
 pub fn tokenise(src: &str) -> Result<Vec<Token<'_>>, LexError<'_>> {
@@ -101,6 +105,7 @@ impl<'src> Lexer<'src> {
             '>' => Punct::Gt,
             '<' => Punct::Lt,
             ';' => Punct::Semicolon,
+            ',' => Punct::Comma,
             '+' => Punct::Plus,
             '-' => Punct::Minus,
             '*' => Punct::Star,
@@ -195,6 +200,9 @@ impl Keyword {
             Self::Else => "else",
             Self::While => "while",
             Self::Return => "return",
+            Self::Fun => "fun",
+            Self::Var => "var",
+            Self::Main => "main",
         }
     }
 }
@@ -207,6 +215,7 @@ impl Punct {
             Punct::Lt => "<",
             Punct::Gt => ">",
             Punct::Semicolon => ";",
+            Punct::Comma => ",",
             Punct::Plus => "+",
             Punct::Minus => "-",
             Punct::Star => "*",
@@ -228,6 +237,9 @@ impl FromStr for Keyword {
             "else" => Self::Else,
             "while" => Self::While,
             "return" => Self::Return,
+            "fun" => Self::Fun,
+            "var" => Self::Var,
+            "main" => Self::Main,
             _ => return Err(()),
         })
     }
@@ -364,6 +376,24 @@ mod tests {
             Punct::Semicolon.into(),
             Punct::Eq.into(),
             TokenKind::Ident("Zx1"),
+        ];
+
+        assert_eq!(tokens.iter().map(|token| token.kind).collect::<Vec<_>>(), expected);
+    }
+
+    #[test]
+    fn function_tokens_are_tokenised() {
+        let tokens = tokenise("fun f(a, b) var main").unwrap();
+        let expected: [TokenKind; 9] = [
+            Keyword::Fun.into(),
+            TokenKind::Ident("f"),
+            Punct::OpenParen.into(),
+            TokenKind::Ident("a"),
+            Punct::Comma.into(),
+            TokenKind::Ident("b"),
+            Punct::CloseParen.into(),
+            Keyword::Var.into(),
+            Keyword::Main.into(),
         ];
 
         assert_eq!(tokens.iter().map(|token| token.kind).collect::<Vec<_>>(), expected);
