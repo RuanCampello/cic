@@ -14,4 +14,6 @@ _start:
   call imprime_num
   call sair
 
+  ## funcoes devem ser inseridas aqui
+
   .include "runtime.s"
