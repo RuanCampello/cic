@@ -14,11 +14,14 @@ LLM usage: I used an LLM to implement the syntax tree printing (`src/frontend/tr
 
 ---
 
-The compiler implements the Cmd language with the syntax from the specification, no variation:
+The compiler implements the Fun language with the syntax from the specification:
 
 ```
-<programa> ::= <decl>* '{' <cmd>* 'return' <exp> ';' '}'
-<decl>     ::= <id> '=' <exp> ';'
+<programa> ::= <decl>* 'main' '{' <cmd>* 'return' <exp> ';' '}'
+<decl>     ::= <vardecl> | <fundecl>
+<fundecl>  ::= 'fun' <id> '(' <arglist>? ')' '{' <vardecl>* <cmd>* 'return' <exp> ';' '}'
+<arglist>  ::= <id> | <id> ',' <arglist>
+<vardecl>  ::= 'var' <id> '=' <exp> ';'
 <cmd>      ::= <if> | <while> | <atrib>
 <if>       ::= 'if' <exp> '{' <cmd>* '}' 'else' '{' <cmd>* '}'
 <while>    ::= 'while' <exp> '{' <cmd>* '}'
@@ -26,26 +29,46 @@ The compiler implements the Cmd language with the syntax from the specification,
 <exp>      ::= <exp_a> (('<' | '>' | '==') <exp_a>)*
 <exp_a>    ::= <exp_m> (('+' | '-') <exp_m>)*
 <exp_m>    ::= <prim> (('*' | '/') <prim>)*
-<prim>     ::= <num> | <id> | '(' <exp> ')'
+<prim>     ::= <num> | <id> | '(' <exp> ')' | <fun>
+<fun>      ::= <id> '(' <params>? ')'
+<params>   ::= <exp> | <exp> ',' <params>
 ```
 
 ```
-n = 1;
-m = 10;
-sum = 0;
-{
-  while n < m {
-    sum = sum + n;
-    n = n + 1;
+fun fib(n) {
+  var res = 0;
+  if n < 2 {
+    res = 1;
+  } else {
+    res = fib(n - 1) + fib(n - 2);
   }
-  return sum;
+  return res;
+}
+
+main {
+  return fib(10);
 }
 ```
 
 Comparisons result in 1 (true) or 0 (false), and any value other than 0 is true in `if` and
-`while`. Using or assigning a variable that was not declared before the body is a semantic
-error, reported before any code is generated. Variables are 64-bit integers placed in the
-`.bss` section.
+`while`. Global variables are 64-bit integers placed in the `.bss` section. Parameters and
+locals live in the function's activation record on the stack, following the calling
+convention from the specification (arguments pushed last to first, `push %rbp`,
+`sub`, `mov %rsp, %rbp`).
+
+Declarations are checked in order, so a function can call itself and earlier functions, but
+not functions declared after it (no mutual recursion). Locals and parameters hide globals of
+the same name. All semantic errors are reported before any code is generated.
+
+Small differences from the specification:
+
+- function labels are prefixed with `fun_` (and globals with `var_`), so names like `sair`
+  don't clash with the runtime
+- a trailing comma in a parameter or argument list is a syntax error
+- a function name can't be reused by a variable or another function, and a function can't
+  repeat a name among its parameters and locals (globals can still be redeclared)
+- operands and arguments are evaluated right to left, in `eval` as well as in the compiled
+  code, so functions that change globals give the same result in both
 
 ---
 
@@ -56,11 +79,14 @@ cargo test
 ```
 
 Unit tests cover the lexer, parser, semantic analysis and interpreter. Integration tests
-use the programs in `tests/fixtures/`. The spec examples (`minimal`, `delta`, `sum`,
-`remainder`, `gcd`) and `ok.ci` are run with both `eval` and `run`, checking the printed
-value. The other fixtures check the errors: a lexical error, a syntax error, an `if`
-without `else`, and undeclared variables on each side of an assignment. Several smaller
-programs with comparisons, `if` and `while` are also compiled, assembled, linked and run.
+use the programs in `tests/fixtures/`. The programs `minimal`, `delta`, `sum`,
+`remainder`, `gcd`, `ok`, `fib` (recursion), `abs` (a function calling another one) and
+`calls` (functions with and without parameters or locals, changing a global) are run with
+both `eval` and `run`, checking the printed value. The other fixtures check the errors: a
+lexical error, a syntax error, an `if` without `else`, undeclared variables, a call to an
+undeclared function, a wrong number of arguments, calling a variable and using a local
+outside its function. Several smaller programs (comparisons, `if`, `while`, calls,
+shadowing, parameter order, factorial) are also compiled, assembled, linked and run.
 
 To build the binary (of the compiler itself), run: 
 
